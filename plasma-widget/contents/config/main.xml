@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="grafanaUrl" type="String">
+      <default>http://grafana:3000</default>
+    </entry>
+    <entry name="apiToken" type="String">
+      <default></default>
+    </entry>
+    <entry name="datasourceUid" type="String">
+      <default>influxdb</default>
+    </entry>
+    <entry name="bucket" type="String">
+      <default>sensors</default>
+    </entry>
+    <entry name="measurement" type="String">
+      <default>mqtt_consumer</default>
+    </entry>
+    <entry name="sensors" type="String">
+      <default>GVH5075_B6D2,GVH5075_E22C</default>
+    </entry>
+    <entry name="refreshSeconds" type="Int">
+      <default>60</default>
+    </entry>
+    <entry name="bypassProxy" type="Bool">
+      <default>true</default>
+    </entry>
+  </group>
+</kcfg>

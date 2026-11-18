@@ -1,0 +1,18 @@
+{
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "what-a-mess"
+      }
+    ],
+    "Category": "Environment and Weather",
+    "Description": "Latest Govee H5075 temperature, humidity and battery from Grafana",
+    "Icon": "weather-temperature",
+    "Id": "com.whatamesss.sensorbridge",
+    "License": "GPL-2.0-or-later",
+    "Name": "SensorBridge",
+    "Version": "1.1"
+  },
+  "KPackageStructure": "Plasma/Applet",
+  "X-Plasma-API-Minimum-Version": "6.0"
+}

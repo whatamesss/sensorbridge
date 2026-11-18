@@ -1,0 +1,94 @@
+import QtQuick
+import QtQuick.Controls as QQC2
+import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
+
+Kirigami.FormLayout {
+    property alias cfg_grafanaUrl: urlField.text
+    property alias cfg_apiToken: tokenField.text
+    property bool looksLikeShareToken:
+        /^[0-9a-f]{32}$/i.test(String(tokenField.text).trim())
+    property alias cfg_datasourceUid: datasourceField.text
+    property alias cfg_bucket: bucketField.text
+    property alias cfg_measurement: measurementField.text
+    property alias cfg_sensors: sensorsField.text
+    property alias cfg_refreshSeconds: refreshSpin.value
+    property alias cfg_bypassProxy: proxyCheck.checked
+
+    QQC2.TextField {
+        id: urlField
+        Kirigami.FormData.label: i18n("Grafana URL:")
+        placeholderText: "http://grafana:3000"
+    }
+
+    QQC2.TextField {
+        id: tokenField
+        Kirigami.FormData.label: i18n("Service account token:")
+        placeholderText: i18n("Leave empty only for anonymous Grafana")
+        echoMode: TextInput.Password
+    }
+
+    QQC2.Label {
+        visible: looksLikeShareToken
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        font: Kirigami.Theme.smallFont
+        color: Kirigami.Theme.negativeTextColor
+        text: i18n("This looks like a public dashboard share token."
+            + " Create a Viewer service account token in Grafana and use"
+            + " that here instead.")
+    }
+
+    QQC2.CheckBox {
+        id: proxyCheck
+        Kirigami.FormData.label: i18n("Bypass system proxy:")
+        text: i18n("Connect directly to Grafana, ignoring proxy settings")
+    }
+
+    QQC2.TextField {
+        id: datasourceField
+        Kirigami.FormData.label: i18n("Datasource UID:")
+        placeholderText: "influxdb"
+    }
+
+    QQC2.TextField {
+        id: bucketField
+        Kirigami.FormData.label: i18n("InfluxDB bucket:")
+        placeholderText: "sensors"
+    }
+
+    QQC2.TextField {
+        id: measurementField
+        Kirigami.FormData.label: i18n("Measurement:")
+        placeholderText: "mqtt_consumer"
+    }
+
+    QQC2.TextField {
+        id: sensorsField
+        Kirigami.FormData.label: i18n("Sensor names:")
+        placeholderText: "GVH5075_B6D2, GVH5075_E22C"
+    }
+
+    QQC2.SpinBox {
+        id: refreshSpin
+        Kirigami.FormData.label: i18n("Refresh interval:")
+        from: 10
+        to: 3600
+        stepSize: 10
+        textFromValue: function (value) {
+            return i18np("%1 second", "%1 seconds", value)
+        }
+    }
+
+    QQC2.Label {
+        Layout.fillWidth: true
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 25
+        wrapMode: Text.WordWrap
+        font: Kirigami.Theme.smallFont
+        color: Kirigami.Theme.disabledTextColor
+        text: i18n("Create the token under Administration → Users and access"
+            + " → Service accounts with the Viewer role. It is stored in this"
+            + " widget's configuration in plain text. Leave the sensor list"
+            + " empty to show every sensor in the bucket.")
+    }
+}
