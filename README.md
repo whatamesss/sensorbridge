@@ -9,8 +9,6 @@ A [KDE Plasma 6 widget](plasma-widget/) shows the latest readings from Grafana.
 - `android-app/` — Android source, Gradle wrapper, debug keystore, release APK
 - `plasma-widget/` — Plasma 6 applet
 
-Grafana dashboards and collector tooling are local-only and are not published.
-
 ## Build
 
 Requires JDK 17 and Android SDK platform 35 / build-tools 35.0.0.
