@@ -10,8 +10,7 @@ The companion [Plasma widget](plasma-widget/) shows the latest readings from
 Grafana on the desktop, one row per sensor.
 
 <p align="center">
-  <img src="docs/screenshots/main-screen.png" width="260" alt="Main screen: bridge connected, two sensors publishing, with Start/Stop and test buttons">
-  <img src="docs/screenshots/mqtt-settings.png" width="260" alt="MQTT settings: hostname, port, username, password and publish topic">
+  <img src="docs/screenshots/main-screen.png" width="260" alt="Status screen with two sensors publishing, above the MQTT settings">
   <img src="docs/screenshots/notification.png" width="260" alt="Foreground service notification showing both sensors and a Stop action">
 </p>
 
