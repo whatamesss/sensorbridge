@@ -92,6 +92,38 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 The signed release build is `android-app/release/sensorbridge-1.2.apk`
 (versionCode 3, versionName 1.2).
 
+### Signing a release
+
+Release builds are signed with a private key that is not part of this
+repository. Point the build at it with an untracked `keystore.properties` at
+the repository root:
+
+```properties
+storeFile=/home/you/keys/sensorbridge-release.jks
+storePassword=…
+keyAlias=sensorbridge
+keyPassword=…
+```
+
+or with the environment variables `SENSORBRIDGE_KEYSTORE`,
+`SENSORBRIDGE_KEYSTORE_PASSWORD`, `SENSORBRIDGE_KEY_ALIAS` and
+`SENSORBRIDGE_KEY_PASSWORD`. PKCS#12 keystores hold a single password, so
+`keyPassword` normally equals `storePassword`.
+
+```sh
+./gradlew assembleRelease
+$ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs \
+    app/build/outputs/apk/release/app-release.apk
+```
+
+Without those values the build still succeeds, but produces
+`app-release-unsigned.apk`, which Android refuses to install.
+
+Publish the signed APK as an asset on a tagged GitHub release, rather than
+committing it, and bump `versionCode` in `android-app/app/build.gradle` for
+every release so devices see it as newer. Keep a backup of the keystore:
+without it, installed copies can only ever be replaced by uninstalling first.
+
 ## Plasma widget
 
 `plasma-widget/` is a KDE Plasma 6 applet that queries Grafana's HTTP API for
@@ -123,6 +155,8 @@ troubleshooting.
   checked in so the signing key stays the same across machines and rebuilds.
   Without it, AGP generates a fresh debug key whenever the user-home keystore
   is missing, and Android then refuses to update an installed build in place.
+  That key is public, so it only ever signs local test builds; published
+  releases use a separate private key, see *Signing a release*.
 - `minSdk` / `targetSdk` are 27 (Android 8.1), matching the device this was
   built for. Android 12+ additionally requires `BLUETOOTH_SCAN` /
   `BLUETOOTH_CONNECT` runtime permissions; they are not declared here.

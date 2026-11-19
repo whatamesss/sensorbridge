@@ -2,6 +2,27 @@ plugins {
     id 'com.android.application'
 }
 
+// Release signing lives outside the repository: an untracked keystore.properties
+// at the repository root, or the SENSORBRIDGE_* environment variables. See
+// "Signing a release" in the README.
+def releaseSigning = new Properties()
+def releaseSigningFile = rootProject.file('keystore.properties')
+
+if (releaseSigningFile.exists()) {
+    releaseSigningFile.withInputStream { releaseSigning.load(it) }
+}
+
+def releaseSetting = { String envName, String propertyName ->
+    System.getenv(envName) ?: releaseSigning.getProperty(propertyName)
+}
+
+def releaseStoreFile = releaseSetting('SENSORBRIDGE_KEYSTORE', 'storeFile')
+def releaseStorePassword =
+    releaseSetting('SENSORBRIDGE_KEYSTORE_PASSWORD', 'storePassword')
+def releaseKeyAlias = releaseSetting('SENSORBRIDGE_KEY_ALIAS', 'keyAlias')
+def releaseKeyPassword =
+    releaseSetting('SENSORBRIDGE_KEY_PASSWORD', 'keyPassword')
+
 android {
     namespace 'com.whatamesss.sensorbridge'
     compileSdk 35
@@ -17,7 +38,8 @@ android {
     // Pin the debug signing key to a copy checked in with the project. Without
     // this, AGP looks for debug.keystore in a user-home location and silently
     // mints a new key whenever it is missing, which changes the signature and
-    // blocks in-place updates on the device.
+    // blocks in-place updates on the device. Release builds are signed with a
+    // private key that is not part of the repository.
     signingConfigs {
         debug {
             storeFile file('../keystore/debug.keystore')
@@ -25,11 +47,26 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+
+        if (releaseStoreFile) {
+            release {
+                storeFile rootProject.file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+        }
+
+        release {
+            if (releaseStoreFile) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
