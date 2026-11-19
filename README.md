@@ -9,6 +9,13 @@ screen is off or the app is closed.
 The companion [Plasma widget](plasma-widget/) shows the latest readings from
 Grafana on the desktop, one row per sensor.
 
+Only the H5075 format is decoded, but nothing is tied to it: the scan callback
+looks up manufacturer ID `0xEC88` and hands the payload to a small class with no
+Android dependencies and its own unit tests. Another well-documented BLE sensor
+that advertises temperature, humidity and battery normally needs one decoder
+modelled on `H5075` plus that lookup; the service, JSON payload and MQTT
+handling stay as they are.
+
 <p align="center">
   <img src="docs/screenshots/main-screen.png" width="260" alt="Status screen with two sensors publishing, above the MQTT settings">
   <img src="docs/screenshots/notification.png" width="260" alt="Foreground service notification showing both sensors and a Stop action">
