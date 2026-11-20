@@ -6,10 +6,19 @@ plugins {
 // at the repository root, or the SENSORBRIDGE_* environment variables. See
 // "Signing a release" in the README.
 def releaseSigning = new Properties()
-def releaseSigningFile = rootProject.file('keystore.properties')
+// The Gradle root is android-app, but the documented location is the
+// repository root one level up. Accept either so an existing
+// ~/projects/sensorbridge/keystore.properties is actually found.
+def releaseSigningFile = rootProject.file('../keystore.properties')
+
+if (!releaseSigningFile.exists()) {
+    releaseSigningFile = rootProject.file('keystore.properties')
+}
 
 if (releaseSigningFile.exists()) {
-    releaseSigningFile.withInputStream { releaseSigning.load(it) }
+    // Read UTF-8 so a hand-edited file (and the "…" placeholder) is handled
+    // literally; Properties.load(InputStream) would decode it as ISO-8859-1.
+    releaseSigningFile.withReader('UTF-8') { releaseSigning.load(it) }
 }
 
 def releaseSetting = { String envName, String propertyName ->
@@ -34,6 +43,34 @@ def releaseStorePassword =
 def releaseKeyAlias = releaseSetting('SENSORBRIDGE_KEY_ALIAS', 'keyAlias')
 def releaseKeyPassword =
     releaseSetting('SENSORBRIDGE_KEY_PASSWORD', 'keyPassword')
+
+// A template copied from the README has "…" in the password/alias fields.
+// Fail with an explanation instead of letting AGP report a missing alias
+// after it has already compiled everything.
+if (releaseStoreFile) {
+    def releaseValues = [releaseStoreFile, releaseStorePassword,
+        releaseKeyAlias, releaseKeyPassword]
+
+    if (releaseValues.any { it == null || it.trim().isEmpty()
+            || it.trim() == '\u2026' }) {
+        throw new GradleException(
+            'keystore.properties still contains placeholder values (…).'
+            + ' Fill in the real storeFile, storePassword, keyAlias and'
+            + ' keyPassword, or remove the file to build an unsigned APK.')
+    }
+}
+
+// Resolve a relative storeFile against keystore.properties, not against the
+// android-app directory.
+def releaseStore = null
+
+if (releaseStoreFile) {
+    releaseStore = new File(releaseStoreFile)
+
+    if (!releaseStore.isAbsolute()) {
+        releaseStore = new File(releaseSigningFile.parentFile, releaseStoreFile)
+    }
+}
 
 android {
     namespace 'com.whatamesss.sensorbridge'
@@ -60,9 +97,9 @@ android {
             keyPassword 'android'
         }
 
-        if (releaseStoreFile) {
+        if (releaseStore) {
             release {
-                storeFile rootProject.file(releaseStoreFile)
+                storeFile releaseStore
                 storePassword releaseStorePassword
                 keyAlias releaseKeyAlias
                 keyPassword releaseKeyPassword
@@ -76,7 +113,7 @@ android {
         }
 
         release {
-            if (releaseStoreFile) {
+            if (releaseStore) {
                 signingConfig signingConfigs.release
             }
         }
