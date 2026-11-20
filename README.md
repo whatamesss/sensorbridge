@@ -81,51 +81,9 @@ scheme Govee uses.
 The service keeps running in the background until **STOP SENSORBRIDGE** is
 pressed.
 
-## Building
+## Download
 
-Requires JDK 17 and the Android SDK with platform 35 and build-tools 35.0.0.
-
-```sh
-cd android-app
-./gradlew test assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-The signed release build is `android-app/release/sensorbridge-1.2.apk`
-(versionCode 3, versionName 1.2).
-
-### Signing a release
-
-Release builds are signed with a private key that is not part of this
-repository. Point the build at it with an untracked `keystore.properties` at
-the repository root:
-
-```properties
-storeFile=/home/you/keys/sensorbridge-release.jks
-storePassword=…
-keyAlias=sensorbridge
-keyPassword=…
-```
-
-or with the environment variables `SENSORBRIDGE_KEYSTORE`,
-`SENSORBRIDGE_KEYSTORE_PASSWORD`, `SENSORBRIDGE_KEY_ALIAS` and
-`SENSORBRIDGE_KEY_PASSWORD`. PKCS#12 keystores hold a single password, so
-`keyPassword` normally equals `storePassword`. A `storeFile` starting with
-`~/` is expanded to your home directory.
-
-```sh
-./gradlew assembleRelease
-$ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs \
-    app/build/outputs/apk/release/app-release.apk
-```
-
-Without those values the build still succeeds, but produces
-`app-release-unsigned.apk`, which Android refuses to install.
-
-Publish the signed APK as an asset on a tagged GitHub release, rather than
-committing it, and bump `versionCode` in `android-app/app/build.gradle` for
-every release so devices see it as newer. Keep a backup of the keystore:
-without it, installed copies can only ever be replaced by uninstalling first.
+The signed release APK is attached to the GitHub releases page.
 
 ## Plasma widget
 
@@ -171,7 +129,7 @@ troubleshooting.
 
 ## Layout
 
-    android-app/                     Android source, Gradle wrapper, keystore, release APK
+    android-app/                     Android source, Gradle wrapper, keystore
     android-app/app/src/main/java/com/whatamesss/sensorbridge/
       MainActivity.java              settings UI and service control
       SensorService.java             foreground BLE scanner and MQTT publisher
@@ -183,19 +141,6 @@ troubleshooting.
 ## Notes
 
 - The application ID is `com.whatamesss.sensorbridge`.
-- Debug builds are signed with `android-app/keystore/debug.keystore`, which is
-  checked in so the signing key stays the same across machines and rebuilds.
-  Without it, AGP generates a fresh debug key whenever the user-home keystore
-  is missing, and Android then refuses to update an installed build in place.
-  That key is public, so it only ever signs local test builds; published
-  releases use a separate private key, see *Signing a release*.
-- `minSdk` / `targetSdk` are 27 (Android 8.1), matching the device this was
-  built for. Android 12+ additionally requires `BLUETOOTH_SCAN` /
-  `BLUETOOTH_CONNECT` runtime permissions; they are not declared here. The
-  release build therefore disables lint's Play-only `ExpiredTargetSdkVersion`
-  check (`app/build.gradle`): the app is distributed as a signed APK, not
-  through Google Play, and raising the target would require that permission
-  flow.
 - The MQTT password is stored in the app's private `SharedPreferences`, which
   is not encrypted. Use a broker account scoped to this device only.
 - `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is declared so the app can ask to be
