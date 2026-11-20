@@ -17,7 +17,8 @@ modelled on `H5075` plus that lookup; the service, JSON payload and MQTT
 handling stay as they are.
 
 <p align="center">
-  <img src="docs/screenshots/main-screen.png" width="260" alt="Status screen with two sensors publishing, above the MQTT settings">
+  <img src="docs/screenshots/main-screen.png" width="260" alt="Main screen: bridge connected, two sensors publishing, with Start/Stop and test buttons">
+  <img src="docs/screenshots/mqtt-settings.png" width="260" alt="MQTT settings: hostname, port, username, password and publish topic">
   <img src="docs/screenshots/notification.png" width="260" alt="Foreground service notification showing both sensors and a Stop action">
 </p>
 
@@ -133,7 +134,10 @@ the same sensors and shows temperature, humidity, battery and reading age.
 kpackagetool6 --type Plasma/Applet --install plasma-widget
 ```
 
-After changing it, upgrade with `--upgrade plasma-widget` instead. See
+After changing it, upgrade with `--upgrade plasma-widget` instead. The widget
+reads its saved settings from `~/.config/sensorbridge` at launch and writes
+changes made in **Configure** back to that file. Double-click the widget body to
+open the configured Grafana URL in a browser. See
 [`plasma-widget/README.md`](plasma-widget/README.md) for configuration and
 troubleshooting.
 

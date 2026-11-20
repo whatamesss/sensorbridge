@@ -198,6 +198,14 @@ Item {
             "public dashboard link is detected");
         check(!Grafana.isPublicDashboardUrl("http://grafana:3000"),
             "base url is accepted");
+        check(Grafana.browserUrl(" http://grafana:3000/ ")
+            === "http://grafana:3000", "browser url is the configured base");
+        check(Grafana.browserUrl(
+            "http://grafana:3000/api/ds/query")
+            === "http://grafana:3000", "browser url drops api suffix");
+        check(Grafana.browserUrl("file:///etc/passwd") === "",
+            "non-http browser url is rejected");
+        check(Grafana.browserUrl("") === "", "empty browser url is rejected");
         check(Grafana.shellQuote("a'b") === "'a'\\''b'",
             "shell quote escapes single quotes");
 

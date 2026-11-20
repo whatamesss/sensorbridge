@@ -40,10 +40,20 @@ kpackagetool6 --type Plasma/Applet --remove com.whatamesss.sensorbridge
 ```
 
 Then add **SensorBridge** to the desktop from Plasma's widget chooser.
+Double-click the widget body to open the configured Grafana URL in the default
+browser.
 
 ## Configure
 
-Right-click the widget and choose **Configure**:
+At launch the widget reads its settings from `~/.config/sensorbridge` (or
+`$XDG_CONFIG_HOME/sensorbridge`) when that file exists. Those values are also
+mirrored into Plasma's applet configuration, so **Configure** shows the
+settings actually in use. If the file is missing, the widget falls back to the
+configuration Plasma keeps for the applet.
+
+Right-click the widget and choose **Configure** to change the settings. A
+change applies immediately and is saved back to `~/.config/sensorbridge`, so it
+survives a restart even if the applet is removed and re-added:
 
 | Setting | Default | Notes |
 | --- | --- | --- |
@@ -65,10 +75,38 @@ It only authorises the public dashboard's own endpoints; sending it as
 the base URL (`http://grafana:3000`) in the widget, not the public dashboard
 link. The widget flags both mistakes in its settings.
 
-The token is stored in plain text in the applet's configuration (in
-`~/.config/plasma-org.kde.plasma.desktop-appletsrc`). Use a read-only token
-scoped to this purpose. If you remove and re-add the applet, that new applet
-gets fresh defaults, so the token field will be empty again.
+The token is stored in plain text in the shared settings file (or in
+`~/.config/plasma-org.kde.plasma.desktop-appletsrc` when that file is absent).
+Use a read-only token scoped to this purpose.
+
+### Shared settings file
+
+Settings that must survive removing and re-adding the applet belong in
+`~/.config/sensorbridge`:
+
+```ini
+[General]
+configured=1
+grafanaUrl=http://grafana:3000
+dashboardUrl=http://grafana:3000/d/abc/home
+apiToken=your-service-account-token
+datasourceUid=influxdb
+bucket=sensors
+measurement=mqtt_consumer
+sensors=GVH5075_B6D2,GVH5075_E22C
+refreshSeconds=60
+bypassProxy=true
+```
+
+`configured=1` marks the file as deliberately saved; a file with a recognised
+setting is used even without the marker. `dashboardUrl` is optional:
+double-clicking the widget opens it when set, otherwise it opens `grafanaUrl`.
+Keep the file owner-only (`chmod 600`) because it holds the token.
+
+The widget only writes this file in response to a **Configure** edit. It is
+never rewritten at launch, so a stale file cannot overwrite settings you just
+saved. Values not shown in the dialog (such as `dashboardUrl`) are preserved
+when the dialog saves.
 
 ## How it works
 

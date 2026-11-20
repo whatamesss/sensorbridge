@@ -11,7 +11,7 @@
     "Id": "com.whatamesss.sensorbridge",
     "License": "GPL-2.0-or-later",
     "Name": "SensorBridge",
-    "Version": "1.2"
+    "Version": "2.0"
   },
   "KPackageStructure": "Plasma/Applet",
   "X-Plasma-API-Minimum-Version": "6.0"

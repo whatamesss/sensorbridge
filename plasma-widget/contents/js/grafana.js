@@ -96,6 +96,17 @@ function apiUrl(baseUrl) {
     return normalizeBaseUrl(baseUrl) + "/api/ds/query";
 }
 
+/**
+ * URL to hand to the desktop browser. Only http(s) is accepted so a stray
+ * file:// or other scheme in the settings cannot be launched by a double
+ * click. A pasted /api/ds/query suffix is stripped like everywhere else.
+ */
+function browserUrl(baseUrl) {
+    var url = normalizeBaseUrl(baseUrl);
+
+    return /^https?:\/\/\S+$/i.test(url) ? url : "";
+}
+
 /** Quotes a value for /bin/sh so it is passed through unchanged. */
 function shellQuote(value) {
     return "'" + String(value === null || value === undefined ? "" : value)

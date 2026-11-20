@@ -5,6 +5,7 @@ import org.kde.plasma.plasma5support as P5Support
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.kirigami as Kirigami
 import "../js/grafana.js" as Grafana
+import "../js/sharedconfig.js" as SharedConfig
 
 PlasmoidItem {
     id: root
@@ -19,13 +20,220 @@ PlasmoidItem {
     property int retryCount: 0
     property real nowMs: Date.now()
 
+    // Settings read from ~/.config/sensorbridge at launch. Empty when the
+    // file is absent; values from it win over the applet's own (instance-bound)
+    // configuration. A Configure edit updates both copies and is written back
+    // to the file, but only after an explicit user edit.
+    property var savedConfig: ({})
+    property bool configReadDone: false
+    property bool configReadSucceeded: false
+    property string pendingConfigCommand: ""
+    property string pendingConfigWrite: ""
+
     toolTipMainText: i18n("SensorBridge")
     toolTipSubText: ""
+
+    // -------------------------------------------------------------- config
+
+    /** Reads a setting from the applet's own Plasma configuration. */
+    function liveConfigValue(key) {
+        var cfg = Plasmoid.configuration;
+
+        if (key === "grafanaUrl") {
+            return cfg.grafanaUrl;
+        }
+
+        if (key === "apiToken") {
+            return cfg.apiToken;
+        }
+
+        if (key === "datasourceUid") {
+            return cfg.datasourceUid;
+        }
+
+        if (key === "bucket") {
+            return cfg.bucket;
+        }
+
+        if (key === "measurement") {
+            return cfg.measurement;
+        }
+
+        if (key === "sensors") {
+            return cfg.sensors;
+        }
+
+        if (key === "refreshSeconds") {
+            return cfg.refreshSeconds;
+        }
+
+        if (key === "bypassProxy") {
+            return cfg.bypassProxy;
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Value to use for a setting: the shared file when it defines the key,
+     * otherwise the applet's own Plasma configuration. A setting changed in
+     * Configure is kept in savedConfig for this session and written to the
+     * file by writeSharedConfig().
+     */
+    function configValue(key) {
+        var saved = root.savedConfig || {};
+
+        return Object.prototype.hasOwnProperty.call(saved, key)
+            ? saved[key] : liveConfigValue(key);
+    }
+
+    /** Makes a setting changed in the applet config win over the file. */
+    function rememberConfigChange(key) {
+        var next = {};
+        var saved = root.savedConfig || {};
+
+        for (var name in saved) {
+            if (Object.prototype.hasOwnProperty.call(saved, name)) {
+                next[name] = saved[name];
+            }
+        }
+
+        next[key] = liveConfigValue(key);
+        root.savedConfig = next;
+    }
+
+    /** Called for a real settings edit after the launch read finished. */
+    function applyConfigChange(key) {
+        if (!configReadDone) {
+            return;
+        }
+
+        rememberConfigChange(key);
+        configWriteTimer.restart();
+        fetchData();
+    }
+
+    /**
+     * Mirrors file values into Plasma's applet config so the Configure dialog
+     * shows the settings actually in use. It runs at launch only; the change
+     * signals it causes are ignored because configReadDone is still false.
+     */
+    function syncPlasmaConfiguration(values) {
+        var cfg = Plasmoid.configuration;
+        var keys = ["grafanaUrl", "apiToken", "datasourceUid", "bucket",
+            "measurement", "sensors", "refreshSeconds", "bypassProxy"];
+
+        for (var i = 0; i < keys.length; i++) {
+            if (Object.prototype.hasOwnProperty.call(values, keys[i])) {
+                cfg[keys[i]] = values[keys[i]];
+            }
+        }
+    }
+
+    /** Saves the effective settings to ~/.config/sensorbridge. */
+    function writeSharedConfig() {
+        // Never save after a failed launch read: the untouched keys would be
+        // Plasma defaults and could overwrite a file that was merely slow.
+        if (!configReadDone || !configReadSucceeded) {
+            return;
+        }
+
+        var values = {};
+
+        for (var i = 0; i < SharedConfig.KEYS.length; i++) {
+            var key = SharedConfig.KEYS[i];
+
+            values[key] = configValue(key);
+        }
+
+        if (pendingConfigWrite.length > 0) {
+            try {
+                configWriteSource.disconnectSource(pendingConfigWrite);
+            } catch (e) {
+            }
+        }
+
+        pendingConfigWrite = SharedConfig.writeCommand(values);
+        configWriteSource.connectSource(pendingConfigWrite, 0);
+    }
+
+    function readSharedConfig() {
+        configReadTimer.start();
+        pendingConfigCommand = SharedConfig.readCommand();
+        configSource.connectSource(pendingConfigCommand, 0);
+    }
+
+    function applySharedConfig(stdout) {
+        if (configReadDone) {
+            return;
+        }
+
+        var parsed = SharedConfig.parseReadOutput(stdout);
+
+        if (SharedConfig.hasSavedConfig(parsed)) {
+            var values = {};
+            // An empty URL/datasource/bucket/measurement is never usable and
+            // is usually what an older build wrote when it had nothing to
+            // save. Let Plasma's copy show through instead of blanking the
+            // widget. An empty token (anonymous) and an empty sensor list
+            // (show all) are meaningful, so they are kept.
+            var required = ["grafanaUrl", "datasourceUid", "bucket",
+                "measurement"];
+
+            for (var i = 0; i < SharedConfig.KEYS.length; i++) {
+                var key = SharedConfig.KEYS[i];
+                var value = parsed.values[key];
+
+                if (value !== undefined
+                        && (required.indexOf(key) < 0 || value.length > 0)) {
+                    values[key] = value;
+                }
+            }
+
+            if (values.refreshSeconds !== undefined) {
+                values.refreshSeconds =
+                    parseInt(values.refreshSeconds, 10) || 60;
+            }
+
+            if (values.bypassProxy !== undefined) {
+                values.bypassProxy =
+                    SharedConfig.parseBool(values.bypassProxy, true);
+            }
+
+            savedConfig = values;
+            syncPlasmaConfiguration(values);
+        }
+
+        configReadSucceeded = true;
+        configReadDone = true;
+        configReadTimer.stop();
+        refreshTimer.restart();
+        Qt.callLater(root.fetchData);
+    }
+
+    /** Carry on with Plasma's configuration if the read never returns. */
+    function finishConfigRead() {
+        if (configReadDone) {
+            return;
+        }
+
+        if (pendingConfigCommand.length > 0) {
+            try {
+                configSource.disconnectSource(pendingConfigCommand);
+            } catch (e) {
+            }
+
+            pendingConfigCommand = "";
+        }
+
+        configReadDone = true;
+        Qt.callLater(root.fetchData);
+    }
 
     // ---------------------------------------------------------------- data
 
     function sensorNames() {
-        var raw = String(Plasmoid.configuration.sensors || "");
+        var raw = String(configValue("sensors") || "");
         var parts = raw.split(",");
         var names = [];
 
@@ -41,7 +249,26 @@ PlasmoidItem {
     }
 
     function grafanaBaseUrl() {
-        return Grafana.normalizeBaseUrl(Plasmoid.configuration.grafanaUrl);
+        return Grafana.normalizeBaseUrl(configValue("grafanaUrl"));
+    }
+
+    function openInBrowser() {
+        // A dashboard page can live below the base URL, so prefer the
+        // optional dashboardUrl from the shared file.
+        var dashboard = String(configValue("dashboardUrl") || "").trim();
+        var target = dashboard.length > 0
+            ? dashboard : configValue("grafanaUrl");
+        var url = Grafana.browserUrl(target);
+
+        if (url.length === 0) {
+            errorText = i18n("Set a valid http:// or https:// Grafana URL"
+                + " in the widget settings or ~/.config/sensorbridge before"
+                + " opening it.");
+            updateToolTip();
+            return;
+        }
+
+        Qt.openUrlExternally(url);
     }
 
     function abortRequest() {
@@ -85,14 +312,14 @@ PlasmoidItem {
 
     function fetchData() {
         var base = grafanaBaseUrl();
-        var cfg = Plasmoid.configuration;
         var names = sensorNames();
 
         if (base.length === 0) {
             abortRequest();
             loading = false;
             readings = [];
-            errorText = i18n("Set the Grafana URL in the widget settings.");
+            errorText = i18n("Set the Grafana URL in the widget settings"
+                + " or ~/.config/sensorbridge.");
             updateToolTip();
             return;
         }
@@ -109,7 +336,7 @@ PlasmoidItem {
             return;
         }
 
-        var token = String(cfg.apiToken || "").trim();
+        var token = String(configValue("apiToken") || "").trim();
 
         if (/^[0-9a-f]{32}$/i.test(token)) {
             abortRequest();
@@ -127,12 +354,12 @@ PlasmoidItem {
 
         var command = Grafana.buildCurlCommand({
             "grafanaUrl": base,
-            "datasourceUid": cfg.datasourceUid,
-            "bucket": cfg.bucket,
-            "measurement": cfg.measurement,
+            "datasourceUid": configValue("datasourceUid"),
+            "bucket": configValue("bucket"),
+            "measurement": configValue("measurement"),
             "names": names,
             "token": token,
-            "bypassProxy": cfg.bypassProxy
+            "bypassProxy": configValue("bypassProxy")
         });
 
         pendingCommand = command;
@@ -186,38 +413,100 @@ PlasmoidItem {
         }
     }
 
-    Component.onCompleted: Qt.callLater(root.fetchData)
+    P5Support.DataSource {
+        id: configSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: function (sourceName, data) {
+            if (sourceName !== root.pendingConfigCommand) {
+                return;
+            }
+
+            root.pendingConfigCommand = "";
+            configSource.disconnectSource(sourceName);
+            root.applySharedConfig(
+                data && data.stdout !== undefined ? data.stdout : "");
+        }
+    }
+
+    P5Support.DataSource {
+        id: configWriteSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: function (sourceName, data) {
+            if (sourceName !== root.pendingConfigWrite) {
+                return;
+            }
+
+            root.pendingConfigWrite = "";
+            configWriteSource.disconnectSource(sourceName);
+
+            if (data && data["exit code"] !== undefined
+                    && Number(data["exit code"]) !== 0) {
+                console.warn("SensorBridge: could not save settings to"
+                    + " ~/.config/sensorbridge:"
+                    + (data.stderr ? " " + data.stderr : ""));
+            }
+        }
+    }
+
+    Component.onCompleted: Qt.callLater(root.readSharedConfig)
 
     Connections {
         target: Plasmoid.configuration
 
+        // Changes before the file has been read are Plasma populating the
+        // applet, not edits. Let the read decide which values win.
         function onGrafanaUrlChanged() {
-            root.fetchData();
+            root.applyConfigChange("grafanaUrl");
         }
 
         function onApiTokenChanged() {
-            root.fetchData();
+            root.applyConfigChange("apiToken");
         }
 
         function onDatasourceUidChanged() {
-            root.fetchData();
+            root.applyConfigChange("datasourceUid");
         }
 
         function onBucketChanged() {
-            root.fetchData();
+            root.applyConfigChange("bucket");
         }
 
         function onMeasurementChanged() {
-            root.fetchData();
+            root.applyConfigChange("measurement");
         }
 
         function onSensorsChanged() {
-            root.fetchData();
+            root.applyConfigChange("sensors");
+        }
+
+        function onBypassProxyChanged() {
+            root.applyConfigChange("bypassProxy");
         }
 
         function onRefreshSecondsChanged() {
+            root.applyConfigChange("refreshSeconds");
             root.nowMs = Date.now();
+            refreshTimer.restart();
         }
+    }
+
+    Timer {
+        id: configReadTimer
+        interval: 3000
+        repeat: false
+        onTriggered: root.finishConfigRead()
+    }
+
+    // One save per Apply, even when it changes several fields.
+    Timer {
+        id: configWriteTimer
+        interval: 300
+        repeat: false
+        onTriggered: root.writeSharedConfig()
     }
 
     Timer {
@@ -225,7 +514,7 @@ PlasmoidItem {
         running: true
         repeat: true
         interval: Math.max(10,
-            Number(Plasmoid.configuration.refreshSeconds) || 60) * 1000
+            Number(root.configValue("refreshSeconds")) || 60) * 1000
         onTriggered: root.fetchData()
     }
 
@@ -280,6 +569,7 @@ PlasmoidItem {
         }
 
         onClicked: root.expanded = !root.expanded
+        onDoubleClicked: root.openInBrowser()
     }
 
     // ------------------------------------------------------------- full
@@ -316,6 +606,12 @@ PlasmoidItem {
         Layout.preferredHeight: implicitHeight
         Layout.minimumWidth: Kirigami.Units.gridUnit * 12
         Layout.minimumHeight: implicitHeight
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            onDoubleClicked: root.openInBrowser()
+        }
 
         ColumnLayout {
             id: content
