@@ -6,8 +6,9 @@ hygrometer and forwards every validated reading to an **MQTT** broker.
 It runs as a foreground service, so scanning and publishing continue while the
 screen is off or the app is closed.
 
-The companion [Plasma widget](plasma-widget/) shows the latest readings from
-Grafana on the desktop, one row per sensor.
+The companion [Plasma widget](plasma-widget/) shows the latest readings on the
+desktop, one row per sensor. It reads them from Grafana's HTTP API, so the
+usual path is app → MQTT broker → Telegraf → InfluxDB → Grafana → widget.
 
 Only the H5075 format is decoded, but nothing is tied to it: the scan callback
 looks up manufacturer ID `0xEC88` and hands the payload to a small class with no
@@ -128,17 +129,43 @@ without it, installed copies can only ever be replaced by uninstalling first.
 
 ## Plasma widget
 
-`plasma-widget/` is a KDE Plasma 6 applet that queries Grafana's HTTP API for
-the same sensors and shows temperature, humidity, battery and reading age.
+`plasma-widget/` is a KDE Plasma 6 applet that shows the latest readings for
+the same sensors on the desktop, one row per sensor, with temperature, humidity,
+battery and reading age.
 
 ```sh
 kpackagetool6 --type Plasma/Applet --install plasma-widget
 ```
 
-After changing it, upgrade with `--upgrade plasma-widget` instead. The widget
-reads its saved settings from `~/.config/sensorbridge` at launch and writes
-changes made in **Configure** back to that file. Double-click the widget body to
-open the configured Grafana URL in a browser. See
+### How the widget gets its data
+
+The widget reads from **Grafana's `/api/ds/query` API**, not from the app, the
+broker or InfluxDB directly. The usual path is:
+
+```
+Android app ──MQTT──▶ broker ──▶ Telegraf ──▶ InfluxDB ──▶ Grafana API ──▶ widget
+```
+
+- The app publishes one JSON reading per sensor to the configured MQTT topic
+  (see *Payload*).
+- Telegraf's `mqtt_consumer` input writes each message to InfluxDB, in the
+  configured bucket and measurement, with the sensor `name` as a tag.
+- Grafana queries that InfluxDB datasource. The widget sends one Flux query to
+  Grafana for the newest point per sensor in the last 24 hours and parses the
+  returned data frames.
+
+Grafana is therefore a required hop, not an optional dashboard. Any pipeline
+that ends in the same InfluxDB bucket and measurement works, but the widget
+always asks Grafana; it does not subscribe to MQTT, read InfluxDB directly or
+scan Bluetooth itself. Other consumers at the broker or database stage
+(Node-RED, Home Assistant, a second Telegraf consumer, a different Grafana
+datasource) are fine — set *Datasource UID*, *InfluxDB bucket* and *Measurement*
+to whatever writes those points.
+
+After changing the widget, upgrade with `--upgrade plasma-widget` instead. The
+widget reads its saved settings from `~/.config/sensorbridge` at launch and
+writes changes made in **Configure** back to that file. Double-click the widget
+body to open the configured Grafana URL in a browser. See
 [`plasma-widget/README.md`](plasma-widget/README.md) for configuration and
 troubleshooting.
 

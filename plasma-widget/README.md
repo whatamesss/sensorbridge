@@ -1,19 +1,42 @@
 # SensorBridge Plasma widget
 
-A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings from
-Grafana. One row per sensor, with temperature, humidity, battery and the age of
-the reading.
+A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
+row per sensor, with temperature, humidity, battery and the age of the reading.
 
-It queries Grafana's `/api/ds/query` endpoint using the configured InfluxDB
-datasource, bucket and measurement. It does not need direct access to InfluxDB.
+The usual path is:
+
+```
+Android app ──MQTT──▶ broker ──▶ Telegraf ──▶ InfluxDB ──▶ Grafana API ──▶ widget
+```
+
+The widget only talks to Grafana. It queries `/api/ds/query` using the
+configured InfluxDB datasource, bucket and measurement, so it does not need
+direct access to InfluxDB, the broker, the Android app or a Bluetooth adapter.
 
 ## Requirements
 
 - Plasma 6
 - Grafana with an InfluxDB v2 datasource (Flux queries)
+- A pipeline that writes the readings to that datasource: the usual setup is
+  the SensorBridge Android app publishing MQTT and Telegraf's `mqtt_consumer`
+  writing them to InfluxDB
 - `curl` (proxy handling is configurable in the widget settings)
 - A Grafana API token that can query that datasource, unless Grafana allows
   anonymous access
+
+## Direct sources (not implemented)
+
+Only Grafana is supported today. Other sources are possible but need their own
+code:
+
+- **InfluxDB v2** — same `curl`/Flux machinery, different endpoint
+  (`/api/v2/query`) and an annotated-CSV response. This removes Grafana while
+  keeping the broker → Telegraf → InfluxDB pipeline.
+- **MQTT broker** — the widget has no MQTT client. It would need a helper such
+  as `mosquitto_sub` (and its credentials) or a small local bridge process.
+- **BLE from the desktop** — needs a Bluetooth adapter, a scan loop and the
+  same payload decoder running on the desktop; only practical when the desktop
+  is next to the sensors.
 
 ## Install
 
