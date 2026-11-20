@@ -16,7 +16,19 @@ def releaseSetting = { String envName, String propertyName ->
     System.getenv(envName) ?: releaseSigning.getProperty(propertyName)
 }
 
-def releaseStoreFile = releaseSetting('SENSORBRIDGE_KEYSTORE', 'storeFile')
+// Gradle resolves relative paths against the project, but Java does not expand
+// a leading "~". Accept "~/keys/..." from keystore.properties as the user's
+// home directory rather than a literal directory named "~".
+def expandTilde = { String path ->
+    if (path != null && (path == '~' || path.startsWith('~/'))) {
+        return System.getProperty('user.home') + path.substring(1)
+    }
+
+    return path
+}
+
+def releaseStoreFile =
+    expandTilde(releaseSetting('SENSORBRIDGE_KEYSTORE', 'storeFile'))
 def releaseStorePassword =
     releaseSetting('SENSORBRIDGE_KEYSTORE_PASSWORD', 'storePassword')
 def releaseKeyAlias = releaseSetting('SENSORBRIDGE_KEY_ALIAS', 'keyAlias')
@@ -73,6 +85,15 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // This app is published as a signed APK in GitHub releases, not through
+        // Google Play, so the Play target-API policy does not apply. targetSdk 27
+        // is deliberate for the Android 8.1 device it runs on; moving to 31+
+        // would also require the BLUETOOTH_SCAN/BLUETOOTH_CONNECT runtime
+        // permission flow, which this build does not implement.
+        disable 'ExpiredTargetSdkVersion'
     }
 }
 

@@ -109,7 +109,8 @@ keyPassword=…
 or with the environment variables `SENSORBRIDGE_KEYSTORE`,
 `SENSORBRIDGE_KEYSTORE_PASSWORD`, `SENSORBRIDGE_KEY_ALIAS` and
 `SENSORBRIDGE_KEY_PASSWORD`. PKCS#12 keystores hold a single password, so
-`keyPassword` normally equals `storePassword`.
+`keyPassword` normally equals `storePassword`. A `storeFile` starting with
+`~/` is expanded to your home directory.
 
 ```sh
 ./gradlew assembleRelease
@@ -163,7 +164,11 @@ troubleshooting.
   releases use a separate private key, see *Signing a release*.
 - `minSdk` / `targetSdk` are 27 (Android 8.1), matching the device this was
   built for. Android 12+ additionally requires `BLUETOOTH_SCAN` /
-  `BLUETOOTH_CONNECT` runtime permissions; they are not declared here.
+  `BLUETOOTH_CONNECT` runtime permissions; they are not declared here. The
+  release build therefore disables lint's Play-only `ExpiredTargetSdkVersion`
+  check (`app/build.gradle`): the app is distributed as a signed APK, not
+  through Google Play, and raising the target would require that permission
+  flow.
 - The MQTT password is stored in the app's private `SharedPreferences`, which
   is not encrypted. Use a broker account scoped to this device only.
 - `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is declared so the app can ask to be
