@@ -123,7 +123,8 @@ to whatever writes those points.
 After changing the widget, upgrade with `--upgrade plasma-widget` instead. The
 widget reads its saved settings from `~/.config/sensorbridge` at launch and
 writes changes made in **Configure** back to that file. Double-click the widget
-body to open the configured Grafana URL in a browser. See
+body to open the configured Dashboard URL in a browser; when it is empty, the
+Grafana API URL is opened instead. See
 [`plasma-widget/README.md`](plasma-widget/README.md) for configuration and
 troubleshooting.
 

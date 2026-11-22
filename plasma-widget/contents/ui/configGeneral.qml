@@ -5,6 +5,7 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.FormLayout {
     property alias cfg_grafanaUrl: urlField.text
+    property alias cfg_dashboardUrl: dashboardField.text
     property alias cfg_apiToken: tokenField.text
     property bool looksLikeShareToken:
         /^[0-9a-f]{32}$/i.test(String(tokenField.text).trim())
@@ -17,22 +18,28 @@ Kirigami.FormLayout {
 
     // Plasma gives the applet configuration dialog a fixed height hint and
     // does not grow it to this page's implicitHeight, so the last note is
-    // clipped by one line. Nudge the window itself; a spacer or a larger
-    // implicitHeight would only add a scrollable line inside the dialog.
+    // clipped. Nudge the window itself; a spacer or a larger implicitHeight
+    // would only add a scrollable line inside the dialog.
     Component.onCompleted: {
         if (typeof configDialog === "undefined" || !configDialog) {
             return;
         }
 
         Qt.callLater(function () {
-            configDialog.height += Kirigami.Units.gridUnit;
+            configDialog.height += Kirigami.Units.gridUnit * 2;
         });
     }
 
     QQC2.TextField {
         id: urlField
-        Kirigami.FormData.label: i18n("Grafana URL:")
+        Kirigami.FormData.label: i18n("Grafana API URL:")
         placeholderText: "http://grafana:3000"
+    }
+
+    QQC2.TextField {
+        id: dashboardField
+        Kirigami.FormData.label: i18n("Dashboard URL:")
+        placeholderText: i18n("Optional — defaults to the Grafana API URL")
     }
 
     QQC2.TextField {

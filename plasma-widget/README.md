@@ -63,8 +63,8 @@ kpackagetool6 --type Plasma/Applet --remove com.whatamesss.sensorbridge
 ```
 
 Then add **SensorBridge** to the desktop from Plasma's widget chooser.
-Double-click the widget body to open the configured Grafana URL in the default
-browser.
+Double-click the widget body to open the configured Dashboard URL in the default
+browser. When no Dashboard URL is set, it opens the Grafana API URL instead.
 
 ## Configure
 
@@ -80,7 +80,8 @@ survives a restart even if the applet is removed and re-added:
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| Grafana URL | `http://grafana:3000` | Base URL, including any subpath — **not** a `/public-dashboards/…` link |
+| Grafana API URL | `http://grafana:3000` | Base URL that `/api/ds/query` is appended to, including any subpath — **not** a `/public-dashboards/…` link |
+| Dashboard URL | empty | Opened on double-click; empty falls back to the Grafana API URL |
 | Service account token | empty | Grafana service account token; leave empty only for anonymous Grafana |
 | Datasource UID | `influxdb` | UID from the datasource settings page |
 | InfluxDB bucket | `sensors` | Bucket fed by Telegraf |
@@ -89,14 +90,21 @@ survives a restart even if the applet is removed and re-added:
 | Refresh interval | 60 s | Minimum 10 s |
 | Bypass system proxy | on | Turn off to let `curl` use the session's proxy settings |
 
+`Grafana API URL` is the address the widget appends `/api/ds/query` to. If
+Grafana serves from a subpath (`serve_from_sub_path=true`), include it, for
+example `http://grafana:3000/grafana`. `Dashboard URL` is only used by
+double-click and may be a full dashboard page such as
+`http://grafana:3000/grafana/d/abc/home`.
+
 To create a token: **Administration → Users and access → Service accounts**,
 create an account with the **Viewer** role, then add a token to it.
 
 The token in a `/public-dashboards/<token>` URL is *not* a Grafana API token.
 It only authorises the public dashboard's own endpoints; sending it as
-`Authorization: Bearer …` to `/api/ds/query` gives `401 Invalid API key`. Use
-the base URL (`http://grafana:3000`) in the widget, not the public dashboard
-link. The widget flags both mistakes in its settings.
+`Authorization: Bearer …` to `/api/ds/query` gives `401 Invalid API key`. Put
+the API base URL (`http://grafana:3000`) in **Grafana API URL**, not the public
+dashboard link. The dashboard link belongs in **Dashboard URL**, if anywhere.
+The widget flags both mistakes in its settings.
 
 The token is stored in plain text in the shared settings file (or in
 `~/.config/plasma-org.kde.plasma.desktop-appletsrc` when that file is absent).
@@ -124,12 +132,12 @@ bypassProxy=true
 `configured=1` marks the file as deliberately saved; a file with a recognised
 setting is used even without the marker. `dashboardUrl` is optional:
 double-clicking the widget opens it when set, otherwise it opens `grafanaUrl`.
-Keep the file owner-only (`chmod 600`) because it holds the token.
+Both URLs can also be set in the Configure dialog. Keep the file owner-only
+(`chmod 600`) because it holds the token.
 
 The widget only writes this file in response to a **Configure** edit. It is
 never rewritten at launch, so a stale file cannot overwrite settings you just
-saved. Values not shown in the dialog (such as `dashboardUrl`) are preserved
-when the dialog saves.
+saved. Saving the dialog rewrites the whole file from the effective settings.
 
 ## How it works
 
@@ -168,7 +176,7 @@ returns one frame per field.
   query the datasource. `Invalid API key` means you pasted a public dashboard
   share token; use a service account token instead. Anonymous requests to a
   Grafana server that requires login also return 401.
-- **HTTP 404** — the Grafana URL is wrong, the URL includes a subpath that
+- **HTTP 404** — the Grafana API URL is wrong, it includes a subpath that
   `/api/ds/query` is not served under, or the configured Datasource UID does
   not exist.
 - **HTTP 400** — Grafana rejected the query. The error from Grafana is shown

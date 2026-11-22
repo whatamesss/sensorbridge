@@ -192,6 +192,13 @@ Item {
         check(Grafana.apiUrl("http://grafana:3000/api/ds/query")
             === "http://grafana:3000/api/ds/query",
             "api endpoint is not doubled");
+        check(Grafana.apiUrl("http://grafana.home.arpa:3000/grafana/")
+            === "http://grafana.home.arpa:3000/grafana/api/ds/query",
+            "api url keeps a subpath");
+        check(Grafana.normalizeBaseUrl(
+            "http://grafana.home.arpa:3000/grafana/api/ds/query/")
+            === "http://grafana.home.arpa:3000/grafana",
+            "pasted endpoint under a subpath is stripped");
         check(Grafana.isPublicDashboardUrl(
             "http://grafana:3000/public-dashboards/"
             + "4c7297010d95481a85cd86f57c708d27"),
@@ -203,6 +210,10 @@ Item {
         check(Grafana.browserUrl(
             "http://grafana:3000/api/ds/query")
             === "http://grafana:3000", "browser url drops api suffix");
+        check(Grafana.browserUrl(
+            "http://grafana.home.arpa:3000/grafana/d/abc/home")
+            === "http://grafana.home.arpa:3000/grafana/d/abc/home",
+            "browser url keeps a dashboard path");
         check(Grafana.browserUrl("file:///etc/passwd") === "",
             "non-http browser url is rejected");
         check(Grafana.browserUrl("") === "", "empty browser url is rejected");

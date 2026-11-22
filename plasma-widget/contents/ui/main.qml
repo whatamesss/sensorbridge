@@ -43,6 +43,10 @@ PlasmoidItem {
             return cfg.grafanaUrl;
         }
 
+        if (key === "dashboardUrl") {
+            return cfg.dashboardUrl;
+        }
+
         if (key === "apiToken") {
             return cfg.apiToken;
         }
@@ -120,8 +124,9 @@ PlasmoidItem {
      */
     function syncPlasmaConfiguration(values) {
         var cfg = Plasmoid.configuration;
-        var keys = ["grafanaUrl", "apiToken", "datasourceUid", "bucket",
-            "measurement", "sensors", "refreshSeconds", "bypassProxy"];
+        var keys = ["grafanaUrl", "dashboardUrl", "apiToken", "datasourceUid",
+            "bucket", "measurement", "sensors", "refreshSeconds",
+            "bypassProxy"];
 
         for (var i = 0; i < keys.length; i++) {
             if (Object.prototype.hasOwnProperty.call(values, keys[i])) {
@@ -253,17 +258,17 @@ PlasmoidItem {
     }
 
     function openInBrowser() {
-        // A dashboard page can live below the base URL, so prefer the
-        // optional dashboardUrl from the shared file.
+        // A dashboard page can live below the API base URL, so prefer the
+        // optional Dashboard URL and fall back to the Grafana API URL.
         var dashboard = String(configValue("dashboardUrl") || "").trim();
         var target = dashboard.length > 0
             ? dashboard : configValue("grafanaUrl");
         var url = Grafana.browserUrl(target);
 
         if (url.length === 0) {
-            errorText = i18n("Set a valid http:// or https:// Grafana URL"
-                + " in the widget settings or ~/.config/sensorbridge before"
-                + " opening it.");
+            errorText = i18n("Set a valid http:// or https:// Dashboard URL"
+                + " or Grafana API URL in the widget settings or"
+                + " ~/.config/sensorbridge before opening it.");
             updateToolTip();
             return;
         }
@@ -318,7 +323,7 @@ PlasmoidItem {
             abortRequest();
             loading = false;
             readings = [];
-            errorText = i18n("Set the Grafana URL in the widget settings"
+            errorText = i18n("Set the Grafana API URL in the widget settings"
                 + " or ~/.config/sensorbridge.");
             updateToolTip();
             return;
@@ -328,10 +333,10 @@ PlasmoidItem {
             abortRequest();
             loading = false;
             readings = [];
-            errorText = i18n("Use the Grafana base URL (http://grafana:3000),"
-                + " not a public dashboard link. Public dashboard share"
-                + " tokens cannot query /api/ds/query — use a Grafana service"
-                + " account token instead.");
+            errorText = i18n("Use the Grafana API base URL"
+                + " (http://grafana:3000), not a public dashboard link."
+                + " Public dashboard share tokens cannot query /api/ds/query"
+                + " — use a Grafana service account token instead.");
             updateToolTip();
             return;
         }
@@ -461,6 +466,10 @@ PlasmoidItem {
         // applet, not edits. Let the read decide which values win.
         function onGrafanaUrlChanged() {
             root.applyConfigChange("grafanaUrl");
+        }
+
+        function onDashboardUrlChanged() {
+            root.applyConfigChange("dashboardUrl");
         }
 
         function onApiTokenChanged() {
