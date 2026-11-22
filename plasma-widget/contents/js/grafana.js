@@ -2,6 +2,22 @@
 
 var FIELDS = ["temperature", "humidity", "battery"];
 
+// Friendly room names for the two sensors in the usual setup. Matching is on
+// the trailing four characters, so the label survives a changed name prefix.
+var SENSOR_LABELS = {
+    "B6D2": "House",
+    "E22C": "Garage"
+};
+
+/** Appends a room label to a known sensor name, or returns it unchanged. */
+function sensorDisplayName(name) {
+    var text = String(name === null || name === undefined ? "" : name);
+    var match = /([0-9a-f]{4})$/i.exec(text);
+    var label = match ? SENSOR_LABELS[match[1].toUpperCase()] : "";
+
+    return label ? text + " (" + label + ")" : text;
+}
+
 /** Escapes a value for use inside a double-quoted Flux string. */
 function escapeFlux(value) {
     return String(value === null || value === undefined ? "" : value)

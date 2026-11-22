@@ -10,8 +10,6 @@ import "../js/sharedconfig.js" as SharedConfig
 PlasmoidItem {
     id: root
 
-    preferredRepresentation: fullRepresentation
-
     property var readings: []
     property string pendingCommand: ""
     property var pendingNames: []
@@ -29,9 +27,6 @@ PlasmoidItem {
     property bool configReadSucceeded: false
     property string pendingConfigCommand: ""
     property string pendingConfigWrite: ""
-
-    toolTipMainText: i18n("SensorBridge")
-    toolTipSubText: ""
 
     // -------------------------------------------------------------- config
 
@@ -269,7 +264,6 @@ PlasmoidItem {
             errorText = i18n("Set a valid http:// or https:// Dashboard URL"
                 + " or Grafana API URL in the widget settings or"
                 + " ~/.config/sensorbridge before opening it.");
-            updateToolTip();
             return;
         }
 
@@ -304,7 +298,6 @@ PlasmoidItem {
             retryCount += 1;
             readings = result.rows;
             errorText = result.error + " " + i18n("Retrying…");
-            updateToolTip();
             retryTimer.restart();
             return;
         }
@@ -312,7 +305,6 @@ PlasmoidItem {
         retryCount = 0;
         readings = result.rows;
         errorText = result.error;
-        updateToolTip();
     }
 
     function fetchData() {
@@ -325,7 +317,6 @@ PlasmoidItem {
             readings = [];
             errorText = i18n("Set the Grafana API URL in the widget settings"
                 + " or ~/.config/sensorbridge.");
-            updateToolTip();
             return;
         }
 
@@ -337,7 +328,6 @@ PlasmoidItem {
                 + " (http://grafana:3000), not a public dashboard link."
                 + " Public dashboard share tokens cannot query /api/ds/query"
                 + " — use a Grafana service account token instead.");
-            updateToolTip();
             return;
         }
 
@@ -351,7 +341,6 @@ PlasmoidItem {
                 + " share token, not a Grafana API token. Create a service"
                 + " account token with the Viewer role and paste that into"
                 + " the widget settings.");
-            updateToolTip();
             return;
         }
 
@@ -375,34 +364,6 @@ PlasmoidItem {
         // The executable engine runs curl via /bin/sh; the command strips
         // proxy variables and LD_PRELOAD (proxychains) before connecting.
         executableSource.connectSource(command, 0);
-    }
-
-    function updateToolTip() {
-        var lines = [];
-
-        for (var i = 0; i < readings.length; i++) {
-            var row = readings[i];
-
-            if (row.missing) {
-                lines.push(row.name + ": " + i18n("no data"));
-                continue;
-            }
-
-            lines.push(row.name + ": "
-                + Grafana.formatTemperature(row.temperature) + ", "
-                + Grafana.formatHumidity(row.humidity) + ", "
-                + i18n("dew point") + " "
-                + Grafana.formatTemperature(
-                    Grafana.dewPoint(row.temperature, row.humidity)) + ", "
-                + Grafana.formatBattery(row.battery) + " ("
-                + Grafana.formatAge(row.timestamp, nowMs) + ")");
-        }
-
-        if (errorText.length > 0) {
-            lines.push(errorText);
-        }
-
-        toolTipSubText = lines.join("\n");
     }
 
     P5Support.DataSource {
@@ -544,44 +505,7 @@ PlasmoidItem {
         interval: 30000
         onTriggered: {
             root.nowMs = Date.now();
-            root.updateToolTip();
         }
-    }
-
-    // ----------------------------------------------------------- compact
-
-    compactRepresentation: MouseArea {
-        id: compact
-
-        readonly property var firstReading:
-            root.readings.length > 0 ? root.readings[0] : null
-
-        implicitWidth: compactRow.implicitWidth
-            + Kirigami.Units.smallSpacing * 2
-        implicitHeight: compactRow.implicitHeight
-            + Kirigami.Units.smallSpacing * 2
-
-        RowLayout {
-            id: compactRow
-            anchors.centerIn: parent
-            spacing: Kirigami.Units.smallSpacing
-
-            Kirigami.Icon {
-                source: "weather-temperature"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-            }
-
-            PlasmaComponents3.Label {
-                text: compact.firstReading && !compact.firstReading.missing
-                    ? Grafana.formatTemperature(
-                        compact.firstReading.temperature)
-                    : "–"
-            }
-        }
-
-        onClicked: root.expanded = !root.expanded
-        onDoubleClicked: root.openInBrowser()
     }
 
     // ------------------------------------------------------------- full
@@ -613,11 +537,6 @@ PlasmoidItem {
         implicitWidth: Kirigami.Units.gridUnit * 22
         implicitHeight: content.implicitHeight
             + Kirigami.Units.largeSpacing * 2
-
-        Layout.preferredWidth: implicitWidth
-        Layout.preferredHeight: implicitHeight
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 12
-        Layout.minimumHeight: implicitHeight
 
         MouseArea {
             anchors.fill: parent
@@ -654,10 +573,6 @@ PlasmoidItem {
                     icon.name: "view-refresh"
                     enabled: !root.loading
                     onClicked: root.fetchData()
-
-                    PlasmaComponents3.ToolTip {
-                        text: i18n("Refresh now")
-                    }
                 }
             }
 
@@ -690,7 +605,7 @@ PlasmoidItem {
                         spacing: Kirigami.Units.smallSpacing
 
                         PlasmaComponents3.Label {
-                            text: modelData.name
+                            text: Grafana.sensorDisplayName(modelData.name)
                             font.bold: true
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true

@@ -4,6 +4,9 @@ A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
 row per sensor, with temperature, humidity, dew point, battery and the age of
 the reading.
 
+It is desktop-only: it has no compact panel representation and no applet
+tooltip. It always shows the full live view.
+
 The usual path is:
 
 ```
@@ -166,6 +169,9 @@ from(bucket: "sensors")
 Configured sensors with no point in the last 24 hours stay visible as
 **no data**, so a sensor that stops reporting does not simply disappear. A
 reading named `TEST` is ignored.
+
+Known sensor suffixes get a friendly room label in the widget:
+`GVH5075_B6D2 (House)` and `GVH5075_E22C (Garage)`.
 
 The widget parses Grafana's data frames tolerantly: it accepts the sensor name
 from field labels or from a `name` column, and merges frames if the datasource
