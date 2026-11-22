@@ -525,6 +525,31 @@ function mergeRow(target, source) {
         && target.humidity === null && target.battery === null;
 }
 
+/**
+ * Dew point in °C from temperature (°C) and relative humidity (%). Uses the
+ * Magnus-Tetens approximation; returns null when either value is unusable.
+ */
+function dewPoint(temperature, humidity) {
+    if (temperature === null || temperature === undefined
+            || humidity === null || humidity === undefined) {
+        return null;
+    }
+
+    var t = Number(temperature);
+    var rh = Number(humidity);
+
+    if (!isFinite(t) || !isFinite(rh) || rh <= 0 || rh > 100
+            || t <= -243.12) {
+        return null;
+    }
+
+    var b = 17.62;
+    var c = 243.12;
+    var gamma = Math.log(rh / 100) + (b * t) / (c + t);
+
+    return (c * gamma) / (b - gamma);
+}
+
 function formatTemperature(value) {
     return value === null || value === undefined
         ? "–"

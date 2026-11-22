@@ -391,6 +391,9 @@ PlasmoidItem {
             lines.push(row.name + ": "
                 + Grafana.formatTemperature(row.temperature) + ", "
                 + Grafana.formatHumidity(row.humidity) + ", "
+                + i18n("dew point") + " "
+                + Grafana.formatTemperature(
+                    Grafana.dewPoint(row.temperature, row.humidity)) + ", "
                 + Grafana.formatBattery(row.battery) + " ("
                 + Grafana.formatAge(row.timestamp, nowMs) + ")");
         }
@@ -607,7 +610,7 @@ PlasmoidItem {
     fullRepresentation: Item {
         id: full
 
-        implicitWidth: Kirigami.Units.gridUnit * 18
+        implicitWidth: Kirigami.Units.gridUnit * 22
         implicitHeight: content.implicitHeight
             + Kirigami.Units.largeSpacing * 2
 
@@ -717,6 +720,13 @@ PlasmoidItem {
                             value: Grafana.formatHumidity(
                                 modelData.humidity)
                             label: i18n("Humidity")
+                        }
+
+                        Metric {
+                            value: Grafana.formatTemperature(
+                                Grafana.dewPoint(modelData.temperature,
+                                    modelData.humidity))
+                            label: i18n("Dew point")
                         }
 
                         Metric {

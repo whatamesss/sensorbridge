@@ -1,7 +1,8 @@
 # SensorBridge Plasma widget
 
 A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
-row per sensor, with temperature, humidity, battery and the age of the reading.
+row per sensor, with temperature, humidity, dew point, battery and the age of
+the reading.
 
 The usual path is:
 
@@ -169,6 +170,10 @@ reading named `TEST` is ignored.
 The widget parses Grafana's data frames tolerantly: it accepts the sensor name
 from field labels or from a `name` column, and merges frames if the datasource
 returns one frame per field.
+
+Dew point is derived from each reading's temperature and humidity with the
+Magnus-Tetens formula; it is not a separate InfluxDB field or Grafana query. It
+shows as **–** when either value is missing.
 
 ## Troubleshooting
 

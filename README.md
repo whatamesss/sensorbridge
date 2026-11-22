@@ -89,7 +89,7 @@ The signed release APK is attached to the GitHub releases page.
 
 `plasma-widget/` is a KDE Plasma 6 applet that shows the latest readings for
 the same sensors on the desktop, one row per sensor, with temperature, humidity,
-battery and reading age.
+dew point, battery and reading age.
 
 ```sh
 kpackagetool6 --type Plasma/Applet --install plasma-widget

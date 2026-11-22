@@ -316,6 +316,19 @@ Item {
         check(grafana503.error.indexOf("did not come from Grafana") < 0,
             "grafana 503 is not blamed on a proxy");
 
+        var dew = Grafana.dewPoint(20, 50);
+        check(Math.abs(dew - 9.255) < 0.01, "dew point is calculated");
+        check(Math.abs(Grafana.dewPoint(20, 100) - 20) < 0.001,
+            "saturated air dew point equals temperature");
+        check(Grafana.dewPoint(null, 50) === null,
+            "dew point needs temperature");
+        check(Grafana.dewPoint(20, null) === null,
+            "dew point needs humidity");
+        check(Grafana.dewPoint(20, 0) === null,
+            "dew point rejects zero humidity");
+        check(Grafana.dewPoint(20, 101) === null,
+            "dew point rejects humidity above 100");
+
         check(Grafana.formatTemperature(19.04) === "19.0 °C",
             "temperature format");
         check(Grafana.formatHumidity(45.67) === "45.7 %", "humidity format");
