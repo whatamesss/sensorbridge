@@ -18,6 +18,46 @@ function sensorDisplayName(name) {
     return label ? text + " (" + label + ")" : text;
 }
 
+/**
+ * Parses the Sensor names setting. Each entry is the raw `name` tag, optionally
+ * followed by `=Label` to override the built-in display label:
+ * "GVH5075_B6D2=House, GVH5075_E22C". Only the part before `=` is queried, so a
+ * label can never turn into a sensor name that matches nothing in InfluxDB.
+ * Returns the unique names in configured order and a name-to-label map.
+ */
+function parseSensorList(raw) {
+    var parts = String(raw === null || raw === undefined ? "" : raw)
+        .split(",");
+    var names = [];
+    var labels = {};
+
+    for (var i = 0; i < parts.length; i++) {
+        var entry = parts[i].trim();
+
+        if (entry.length === 0) {
+            continue;
+        }
+
+        var eq = entry.indexOf("=");
+        var name = eq >= 0 ? entry.substring(0, eq).trim() : entry;
+        var label = eq >= 0 ? entry.substring(eq + 1).trim() : "";
+
+        if (name.length === 0) {
+            continue;
+        }
+
+        if (names.indexOf(name) < 0) {
+            names.push(name);
+        }
+
+        if (label.length > 0) {
+            labels[name] = label;
+        }
+    }
+
+    return {names: names, labels: labels};
+}
+
 /** Escapes a value for use inside a double-quoted Flux string. */
 function escapeFlux(value) {
     return String(value === null || value === undefined ? "" : value)

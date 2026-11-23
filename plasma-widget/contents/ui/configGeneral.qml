@@ -87,7 +87,7 @@ Kirigami.FormLayout {
     QQC2.TextField {
         id: sensorsField
         Kirigami.FormData.label: i18n("Sensor names:")
-        placeholderText: "GVH5075_B6D2, GVH5075_E22C"
+        placeholderText: i18n("GVH5075_B6D2=House, GVH5075_E22C=Garage")
     }
 
     QQC2.SpinBox {
@@ -109,7 +109,8 @@ Kirigami.FormLayout {
         color: Kirigami.Theme.disabledTextColor
         text: i18n("Create the token under Administration → Users and access"
             + " → Service accounts with the Viewer role. Settings are saved"
-            + " to ~/.config/sensorbridge in plain text. Leave the sensor list"
+            + " to ~/.config/sensorbridge in plain text. Append =Label to a"
+            + " sensor name to change its display label. Leave the sensor list"
             + " empty to show every sensor in the bucket.")
     }
 }

@@ -77,6 +77,7 @@ Item {
             "grafanaUrl": "http://grafana:3000",
             "dashboardUrl": "http://grafana:3000/d/abc/home",
             "apiToken": "a'b",
+            "sensors": "GVH5075_B6D2=House,GVH5075_E22C=Garage",
             "refreshSeconds": 120,
             "bypassProxy": false
         });
@@ -92,6 +93,9 @@ Item {
         check(write.indexOf(
             "dashboardUrl=http://grafana:3000/d/abc/home") >= 0,
             "write preserves the dashboard url");
+        check(write.indexOf(
+            "sensors=GVH5075_B6D2=House,GVH5075_E22C=Garage") >= 0,
+            "write preserves inline sensor labels");
         check(write.indexOf("a'\\''b") >= 0, "write shell-quotes values");
 
         if (failures === 0) {

@@ -4,6 +4,8 @@ A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
 row per sensor, with temperature, humidity, dew point, battery and the age of
 the reading.
 
+![SensorBridge widget showing two sensors](widget.png)
+
 It is desktop-only: it has no compact panel representation and no applet
 tooltip. It always shows the full live view.
 
@@ -44,21 +46,24 @@ code:
 
 ## Install
 
-From this directory:
+From this directory (`plasma-widget/`):
 
 ```sh
 kpackagetool6 --type Plasma/Applet --install .
 ```
 
-After changing the code, upgrade the installed copy with:
+After changing the code, remove and reinstall the applet from this directory:
 
 ```sh
-kpackagetool6 --type Plasma/Applet --upgrade .
+kpackagetool6 --type Plasma/Applet --remove com.whatamesss.sensorbridge
+kpackagetool6 --type Plasma/Applet --install .
 ```
 
-Run `--upgrade .` from inside the package directory and pass only the path —
-not the package name. If it reports that the plugin is not installed, use
-`--install .` instead.
+The package id is `com.whatamesss.sensorbridge`; `plasma-widget` is only the
+source directory. Removing the package also removes the placed widget, so add
+**SensorBridge** again from the widget chooser afterwards, and log out and back
+in so Plasma Shell loads the new files. Its settings survive in
+`~/.config/sensorbridge`.
 
 Remove it with:
 
@@ -90,7 +95,7 @@ survives a restart even if the applet is removed and re-added:
 | Datasource UID | `influxdb` | UID from the datasource settings page |
 | InfluxDB bucket | `sensors` | Bucket fed by Telegraf |
 | Measurement | `mqtt_consumer` | Measurement written by Telegraf |
-| Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; empty shows all |
+| Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; append `=Label` to override the display label; empty shows all |
 | Refresh interval | 60 s | Minimum 10 s |
 | Bypass system proxy | on | Turn off to let `curl` use the session's proxy settings |
 
@@ -128,7 +133,7 @@ apiToken=your-service-account-token
 datasourceUid=influxdb
 bucket=sensors
 measurement=mqtt_consumer
-sensors=GVH5075_B6D2,GVH5075_E22C
+sensors=GVH5075_B6D2=House,GVH5075_E22C=Garage
 refreshSeconds=60
 bypassProxy=true
 ```
@@ -170,8 +175,12 @@ Configured sensors with no point in the last 24 hours stay visible as
 **no data**, so a sensor that stops reporting does not simply disappear. A
 reading named `TEST` is ignored.
 
-Known sensor suffixes get a friendly room label in the widget:
-`GVH5075_B6D2 (House)` and `GVH5075_E22C (Garage)`.
+Known sensor suffixes get a friendly room label by default:
+`GVH5075_B6D2 (House)` and `GVH5075_E22C (Garage)`. Append `=Label` in
+**Sensor names** to override the label:
+`GVH5075_B6D2=Living room, GVH5075_E22C=Shed`. The label is display-only; the
+Flux query uses only the part before `=`, so a label never becomes a sensor
+name that matches nothing in InfluxDB.
 
 The widget parses Grafana's data frames tolerantly: it accepts the sensor name
 from field labels or from a `name` column, and merges frames if the datasource
@@ -199,8 +208,8 @@ shows as **–** when either value is missing.
   cause is visible if it persists. Grafana itself answers query failures with
   400 or 500, so a **503** means a proxy or ingress answered; the widget
   bypasses the desktop proxy settings, but an older installed copy may still
-  be using Qt's HTTP stack. Upgrade with `kpackagetool6 --type Plasma/Applet
-  --upgrade .`.
+  be using Qt's HTTP stack. Reinstall the applet (remove it, then install the
+  current directory) to pick up the new code.
 - **Grafana itself shows no data** — check the datasource health and Grafana's
   logs; the widget depends on that same InfluxDB datasource.
 - **Could not reach Grafana** — check the hostname from this machine, whether

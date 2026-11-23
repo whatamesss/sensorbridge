@@ -338,6 +338,56 @@ Item {
         check(Grafana.sensorDisplayName(null) === "",
             "null sensor name is empty");
 
+        var plain = Grafana.parseSensorList(
+            "GVH5075_B6D2, GVH5075_E22C");
+        check(plain.names.length === 2, "plain list has two names");
+        check(plain.names[0] === "GVH5075_B6D2", "first name is kept");
+        check(plain.labels["GVH5075_B6D2"] === undefined,
+            "plain names have no override");
+
+        var labeled = Grafana.parseSensorList(
+            "GVH5075_B6D2=Living room, GVH5075_E22C=Shed");
+        check(labeled.names[0] === "GVH5075_B6D2",
+            "label is not part of the queried name");
+        check(labeled.names[1] === "GVH5075_E22C",
+            "second label is not part of the queried name");
+        check(labeled.labels["GVH5075_B6D2"] === "Living room",
+            "explicit label maps by raw name");
+        check(labeled.labels["GVH5075_E22C"] === "Shed",
+            "second explicit label maps by raw name");
+
+        var partial = Grafana.parseSensorList(
+            "GVH5075_B6D2=House, GVH5075_E22C");
+        check(partial.names.length === 2, "mixed list keeps both names");
+        check(partial.labels["GVH5075_B6D2"] === "House",
+            "mixed list keeps the explicit label");
+        check(partial.labels["GVH5075_E22C"] === undefined,
+            "unlabelled entry has no override");
+
+        var duplicate = Grafana.parseSensorList(
+            "GVH5075_B6D2=House, GVH5075_B6D2=Shed");
+        check(duplicate.names.length === 1, "duplicate names are merged");
+        check(duplicate.labels["GVH5075_B6D2"] === "Shed",
+            "last label wins for a duplicate");
+
+        var emptyName = Grafana.parseSensorList("=TEST, GVH5075_B6D2");
+        check(emptyName.names.length === 1
+            && emptyName.names[0] === "GVH5075_B6D2",
+            "an entry without a name is ignored");
+
+        var noSensors = Grafana.parseSensorList("");
+        check(noSensors.names.length === 0, "empty list has no names");
+
+        // Regression: a label must never become a queried sensor name.
+        var names = Grafana.parseSensorList("GVH5075_B6D2=TEST").names;
+        var labeledRow = Grafana.parseResponse(200, response([
+            frameWithLabels("GVH5075_B6D2", 19.0, 45.7, 95, now)
+        ]), names);
+        check(labeledRow.rows.length === 1,
+            "labelled sensor still gets a row");
+        check(!labeledRow.rows[0].missing,
+            "labelled sensor still has data");
+
         check(Grafana.formatTemperature(19.04) === "19.0 °C",
             "temperature format");
         check(Grafana.formatHumidity(45.67) === "45.7 %", "humidity format");

@@ -233,19 +233,21 @@ PlasmoidItem {
     // ---------------------------------------------------------------- data
 
     function sensorNames() {
-        var raw = String(configValue("sensors") || "");
-        var parts = raw.split(",");
-        var names = [];
+        return Grafana.parseSensorList(configValue("sensors")).names;
+    }
 
-        for (var i = 0; i < parts.length; i++) {
-            var name = parts[i].trim();
+    /**
+     * Display name for a sensor: the `=Label` from Sensor names, or the
+     * built-in label for the usual sensors, or the raw name.
+     */
+    function displaySensorName(name) {
+        var labels = Grafana.parseSensorList(configValue("sensors")).labels;
 
-            if (name.length > 0 && names.indexOf(name) < 0) {
-                names.push(name);
-            }
+        if (Object.prototype.hasOwnProperty.call(labels, name)) {
+            return name + " (" + labels[name] + ")";
         }
 
-        return names;
+        return Grafana.sensorDisplayName(name);
     }
 
     function grafanaBaseUrl() {
@@ -605,7 +607,7 @@ PlasmoidItem {
                         spacing: Kirigami.Units.smallSpacing
 
                         PlasmaComponents3.Label {
-                            text: Grafana.sensorDisplayName(modelData.name)
+                            text: root.displaySensorName(modelData.name)
                             font.bold: true
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true

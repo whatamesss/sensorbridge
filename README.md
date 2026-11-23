@@ -87,13 +87,26 @@ The signed release APK is attached to the GitHub releases page.
 
 ## Plasma widget
 
-`plasma-widget/` is a KDE Plasma 6 applet that shows the latest readings for
-the same sensors on the desktop, one row per sensor, with temperature, humidity,
-dew point, battery and reading age.
+`plasma-widget/` is the source directory for the SensorBridge applet
+(`com.whatamesss.sensorbridge`). From that directory:
 
 ```sh
-kpackagetool6 --type Plasma/Applet --install plasma-widget
+cd plasma-widget
+kpackagetool6 --type Plasma/Applet --install .
 ```
+
+After changing the widget, remove and reinstall it from the same directory:
+
+```sh
+cd plasma-widget
+kpackagetool6 --type Plasma/Applet --remove com.whatamesss.sensorbridge
+kpackagetool6 --type Plasma/Applet --install .
+```
+
+The package id is `com.whatamesss.sensorbridge`; `plasma-widget` is only the
+source directory. The reinstall removes the placed widget, so add
+**SensorBridge** again from the widget chooser and log out and back in to load
+the new files. Its settings stay in `~/.config/sensorbridge`.
 
 ### How the widget gets its data
 
@@ -120,8 +133,7 @@ scan Bluetooth itself. Other consumers at the broker or database stage
 datasource) are fine — set *Datasource UID*, *InfluxDB bucket* and *Measurement*
 to whatever writes those points.
 
-After changing the widget, upgrade with `--upgrade plasma-widget` instead. The
-widget reads its saved settings from `~/.config/sensorbridge` at launch and
+The widget reads its saved settings from `~/.config/sensorbridge` at launch and
 writes changes made in **Configure** back to that file. Double-click the widget
 body to open the configured Dashboard URL in a browser; when it is empty, the
 Grafana API URL is opened instead. See
