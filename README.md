@@ -88,7 +88,13 @@ The signed release APK is attached to the GitHub releases page.
 ## Plasma widget
 
 `plasma-widget/` is the source directory for the SensorBridge applet
-(`com.whatamesss.sensorbridge`). From that directory:
+(`com.whatamesss.sensorbridge`).
+
+<p align="center">
+  <img src="docs/screenshots/plasma-widget.png" width="320" alt="SensorBridge Plasma widget showing two sensors with temperature, humidity, dew point, battery and reading age">
+</p>
+
+From that directory:
 
 ```sh
 cd plasma-widget

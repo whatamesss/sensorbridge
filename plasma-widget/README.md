@@ -4,7 +4,7 @@ A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
 row per sensor, with temperature, humidity, dew point, battery and the age of
 the reading.
 
-![SensorBridge widget showing two sensors](widget.png)
+![SensorBridge widget showing two sensors](../docs/screenshots/plasma-widget.png)
 
 It is desktop-only: it has no compact panel representation and no applet
 tooltip. It always shows the full live view.
