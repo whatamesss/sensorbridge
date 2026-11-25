@@ -336,8 +336,7 @@ PlasmoidItem {
 
     /**
      * Display name for a sensor: an explicit `=Label` from Sensor names
-     * replaces the raw name, otherwise the built-in label for the usual
-     * sensors is appended to the name.
+     * replaces the raw name, otherwise the raw name is shown.
      */
     function displaySensorName(name) {
         var labels = Grafana.parseSensorList(configValue("sensors")).labels;
@@ -346,7 +345,7 @@ PlasmoidItem {
             return labels[name];
         }
 
-        return Grafana.sensorDisplayName(name);
+        return name;
     }
 
     function grafanaBaseUrl() {

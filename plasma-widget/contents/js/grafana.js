@@ -9,25 +9,9 @@ var SIDE_REFIDS = {
     "outside": "B", "heat": "C", "jf": "D", "errors": "E"
 };
 
-// Friendly room names for the two sensors in the usual setup. Matching is on
-// the trailing four characters, so the label survives a changed name prefix.
-var SENSOR_LABELS = {
-    "B6D2": "House",
-    "E22C": "Garage"
-};
-
-/** Appends a room label to a known sensor name, or returns it unchanged. */
-function sensorDisplayName(name) {
-    var text = String(name === null || name === undefined ? "" : name);
-    var match = /([0-9a-f]{4})$/i.exec(text);
-    var label = match ? SENSOR_LABELS[match[1].toUpperCase()] : "";
-
-    return label ? text + " (" + label + ")" : text;
-}
-
 /**
  * Parses the Sensor names setting. Each entry is the raw `name` tag, optionally
- * followed by `=Label` to override the built-in display label:
+ * followed by `=Label` to set the display label:
  * "GVH5075_B6D2=House, GVH5075_E22C". Only the part before `=` is queried, so a
  * label can never turn into a sensor name that matches nothing in InfluxDB.
  * Returns the unique names in configured order and a name-to-label map.

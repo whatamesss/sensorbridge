@@ -212,11 +212,10 @@ optional, so `weather|temp_c` also works. Defaults match the collectors under
 An empty setting hides that reading. A failed extra query does not hide the
 sensors; the affected reading simply shows **no data**.
 
-Known sensor suffixes get a friendly room label by default:
-`GVH5075_B6D2 (House)` and `GVH5075_E22C (Garage)`. Append `=Label` in
-**Sensor names** to show only that name instead:
+Append `=Label` in **Sensor names** to show a friendly room name:
 `GVH5075_B6D2=Living room, GVH5075_E22C=Shed` displays **Living room** and
-**Shed**. The label is display-only; the Flux query uses only the part before
+**Shed**; unlabelled sensors show their raw name. The label is display-only;
+the Flux query uses only the part before
 `=`, so a label never becomes a sensor name that matches nothing in InfluxDB.
 
 The widget parses Grafana's data frames tolerantly: it accepts the sensor name

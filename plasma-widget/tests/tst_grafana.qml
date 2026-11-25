@@ -520,15 +520,6 @@ Item {
         check(Grafana.dewPoint(20, 101) === null,
             "dew point rejects humidity above 100");
 
-        check(Grafana.sensorDisplayName("GVH5075_B6D2")
-            === "GVH5075_B6D2 (House)", "B6D2 gets the House label");
-        check(Grafana.sensorDisplayName("GVH5075_E22C")
-            === "GVH5075_E22C (Garage)", "E22C gets the Garage label");
-        check(Grafana.sensorDisplayName("GVH5075_1234")
-            === "GVH5075_1234", "unknown sensors keep their name");
-        check(Grafana.sensorDisplayName(null) === "",
-            "null sensor name is empty");
-
         var plain = Grafana.parseSensorList(
             "GVH5075_B6D2, GVH5075_E22C");
         check(plain.names.length === 2, "plain list has two names");
