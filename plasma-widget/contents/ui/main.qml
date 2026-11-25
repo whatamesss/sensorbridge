@@ -596,6 +596,7 @@ PlasmoidItem {
         property string value: "–"
         property string label: ""
         property color valueColor: Kirigami.Theme.textColor
+        property int textAlignment: Qt.AlignLeft
 
         spacing: 0
 
@@ -604,12 +605,16 @@ PlasmoidItem {
             color: metric.valueColor
             font.bold: true
             font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.25
+            horizontalAlignment: metric.textAlignment
+            Layout.fillWidth: true
         }
 
         PlasmaComponents3.Label {
             text: metric.label
             color: Kirigami.Theme.disabledTextColor
             font: Kirigami.Theme.smallFont
+            horizontalAlignment: metric.textAlignment
+            Layout.fillWidth: true
         }
     }
 
@@ -692,7 +697,8 @@ PlasmoidItem {
                             root.sideReading("heat")
                                 ? root.sideReading("heat").value : null)
                         valueColor: root.sideValueColor("heat")
-                        label: i18n("High mass heat")
+                        textAlignment: Qt.AlignHCenter
+                        label: i18n("High Mass heat")
                     }
 
                     Metric {
@@ -702,7 +708,8 @@ PlasmoidItem {
                             root.sideReading("jf")
                                 ? root.sideReading("jf").value : null)
                         valueColor: root.sideValueColor("jf")
-                        label: i18n("JF connections")
+                        textAlignment: Qt.AlignRight
+                        label: i18n("JF Connections")
                     }
                 }
             }
