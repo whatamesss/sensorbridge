@@ -866,6 +866,8 @@ PlasmoidItem {
                             value: Grafana.formatTemperature(
                                 Grafana.dewPoint(modelData.temperature,
                                     modelData.humidity))
+                            valueAlignment: Qt.AlignRight
+                            labelAlignment: Qt.AlignRight
                             label: i18n("Dew point")
                         }
 
@@ -873,6 +875,8 @@ PlasmoidItem {
                             id: batteryMetric
                             value: Grafana.formatBattery(
                                 modelData.battery)
+                            valueAlignment: Qt.AlignRight
+                            labelAlignment: Qt.AlignRight
                             label: i18n("Battery")
                         }
 
