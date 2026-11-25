@@ -745,7 +745,7 @@ PlasmoidItem {
                             ? root.sideText("heat") : ""
                         valueColor: root.sideValueColor("heat")
                         label: root.sideReading("heat") !== null
-                            ? i18n("High mass") : ""
+                            ? i18n("High Mass heat:") : ""
                     }
 
                     Metric {
