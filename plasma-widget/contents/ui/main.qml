@@ -173,13 +173,13 @@ PlasmoidItem {
         }
 
         pendingConfigWrite = SharedConfig.writeCommand(values);
-        configWriteSource.connectSource(pendingConfigWrite, 0);
+        configWriteSource.connectSource(pendingConfigWrite);
     }
 
     function readSharedConfig() {
         configReadTimer.start();
         pendingConfigCommand = SharedConfig.readCommand();
-        configSource.connectSource(pendingConfigCommand, 0);
+        configSource.connectSource(pendingConfigCommand);
     }
 
     function applySharedConfig(stdout) {
@@ -474,7 +474,7 @@ PlasmoidItem {
 
         // The executable engine runs curl via /bin/sh; the command strips
         // proxy variables and LD_PRELOAD (proxychains) before connecting.
-        executableSource.connectSource(command, 0);
+        executableSource.connectSource(command);
     }
 
     P5Support.DataSource {
