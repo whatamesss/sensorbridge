@@ -18,6 +18,8 @@ Item {
             + "dashboardUrl=http://grafana:3000/d/abc/home\n"
             + "apiToken=tok\n"
             + "outside=ibc_boiler|boiler=SL10-85G3|outdoor_c\n"
+            + "boilerHeat=ibc_boiler|boiler=SL10-85G3|load2_btu\n"
+            + "jfConnections=jellyfin_connections|service=jellyfin|value\n"
             + "bypassProxy=false\n"
             + "refreshSeconds=120\n"
             + "sensorLabels=House,Garage\n"
@@ -35,6 +37,12 @@ Item {
         check(parsed.values.outside
             === "ibc_boiler|boiler=SL10-85G3|outdoor_c",
             "outside source is parsed");
+        check(parsed.values.boilerHeat
+            === "ibc_boiler|boiler=SL10-85G3|load2_btu",
+            "boiler heat source is parsed");
+        check(parsed.values.jfConnections
+            === "jellyfin_connections|service=jellyfin|value",
+            "Jellyfin source is parsed");
         check(parsed.values.grafanaUrl !== "http://attacker.invalid",
             "output after the marker is ignored");
         check(parsed.values.sensorLabels === undefined,
@@ -83,6 +91,8 @@ Item {
             "apiToken": "a'b",
             "sensors": "GVH5075_B6D2=House,GVH5075_E22C=Garage",
             "outside": "ibc_boiler|boiler=SL10-85G3|outdoor_c",
+            "boilerHeat": "ibc_boiler|boiler=SL10-85G3|load2_btu",
+            "jfConnections": "jellyfin_connections|service=jellyfin|value",
             "refreshSeconds": 120,
             "bypassProxy": false
         });
@@ -104,6 +114,12 @@ Item {
         check(write.indexOf(
             "outside=ibc_boiler|boiler=SL10-85G3|outdoor_c") >= 0,
             "write stores the outside source");
+        check(write.indexOf(
+            "boilerHeat=ibc_boiler|boiler=SL10-85G3|load2_btu") >= 0,
+            "write stores the boiler heat source");
+        check(write.indexOf(
+            "jfConnections=jellyfin_connections|service=jellyfin|value") >= 0,
+            "write stores the Jellyfin source");
         check(write.indexOf("a'\\''b") >= 0, "write shell-quotes values");
 
         if (failures === 0) {

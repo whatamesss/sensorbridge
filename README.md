@@ -9,8 +9,8 @@ screen is off or the app is closed.
 The companion [Plasma widget](plasma-widget/) shows the latest readings on the
 desktop, one row per sensor. It reads them from Grafana's HTTP API, so the
 usual path is app → MQTT broker → Telegraf → InfluxDB → Grafana → widget. It
-can also show an **Outside** row from the IBC boiler collector, which writes a
-different measurement to the same bucket.
+can also show outside temperature, high-mass boiler heat and Jellyfin
+connection count from other measurements in the same bucket.
 
 Only the H5075 format is decoded, but nothing is tied to it: the scan callback
 looks up manufacturer ID `0xEC88` and hands the payload to a small class with no
@@ -131,8 +131,9 @@ Android app ──MQTT──▶ broker ──▶ Telegraf ──▶ InfluxDB ─
   configured bucket and measurement, with the sensor `name` as a tag.
 - Grafana queries that InfluxDB datasource. The widget sends one Flux query to
   Grafana for the newest point per sensor in the last 24 hours and parses the
-  returned data frames. A second query reads the newest outside temperature
-  point from the boiler measurement in the same bucket, when configured.
+  returned data frames. Extra queries read outside temperature and high-mass
+  boiler heat from the boiler measurement, plus the Jellyfin connection count
+  from the Xeon host measurement, all in the same bucket.
 
 Grafana is therefore a required hop, not an optional dashboard. Any pipeline
 that ends in the same InfluxDB bucket and measurement works, but the widget

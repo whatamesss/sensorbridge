@@ -6,12 +6,12 @@
       }
     ],
     "Category": "Environment and Weather",
-    "Description": "Latest Govee H5075 readings and outside temperature from Grafana",
+    "Description": "Govee readings plus outside temperature, boiler heat and Jellyfin connections from Grafana",
     "Icon": "weather-temperature",
     "Id": "com.whatamesss.sensorbridge",
     "License": "GPL-2.0-or-later",
     "Name": "SensorBridge",
-    "Version": "2.1"
+    "Version": "2.2"
   },
   "KPackageStructure": "Plasma/Applet",
   "X-Plasma-API-Minimum-Version": "6.0"

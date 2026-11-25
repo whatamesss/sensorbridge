@@ -11,10 +11,10 @@ PlasmoidItem {
     id: root
 
     property var readings: []
-    property var outside: null
+    property var sides: null
     property string pendingCommand: ""
     property var pendingNames: []
-    property bool pendingOutsideConfigured: false
+    property var pendingSides: null
     property bool loading: false
     property string errorText: ""
     property int retryCount: 0
@@ -66,6 +66,14 @@ PlasmoidItem {
 
         if (key === "outside") {
             return cfg.outside;
+        }
+
+        if (key === "boilerHeat") {
+            return cfg.boilerHeat;
+        }
+
+        if (key === "jfConnections") {
+            return cfg.jfConnections;
         }
 
         if (key === "refreshSeconds") {
@@ -126,8 +134,8 @@ PlasmoidItem {
     function syncPlasmaConfiguration(values) {
         var cfg = Plasmoid.configuration;
         var keys = ["grafanaUrl", "dashboardUrl", "apiToken", "datasourceUid",
-            "bucket", "measurement", "sensors", "outside", "refreshSeconds",
-            "bypassProxy"];
+            "bucket", "measurement", "sensors", "outside", "boilerHeat",
+            "jfConnections", "refreshSeconds", "bypassProxy"];
 
         for (var i = 0; i < keys.length; i++) {
             if (Object.prototype.hasOwnProperty.call(values, keys[i])) {
@@ -242,9 +250,45 @@ PlasmoidItem {
         return Grafana.parseSensorList(configValue("sensors")).names;
     }
 
-    /** Parsed outside-temperature source, or null when it is disabled. */
-    function outsideSource() {
-        return Grafana.parseOutsideSource(configValue("outside"));
+    /** Parsed sources for the extra readings; null entries are disabled. */
+    function sideSources() {
+        return {
+            "outside": Grafana.parseSideSource(configValue("outside")),
+            "heat": Grafana.parseSideSource(configValue("boilerHeat")),
+            "jf": Grafana.parseSideSource(configValue("jfConnections"))
+        };
+    }
+
+    /** Reading for one side key, or null when it is not configured/loaded. */
+    function sideReading(key) {
+        var all = root.sides;
+
+        return all && all[key] ? all[key] : null;
+    }
+
+    function hasSides() {
+        return root.sideReading("outside") !== null
+            || root.sideReading("heat") !== null
+            || root.sideReading("jf") !== null;
+    }
+
+    /** Red for active boiler heat, green for active Jellyfin connections. */
+    function sideValueColor(key) {
+        var reading = root.sideReading(key);
+
+        if (!reading || reading.missing) {
+            return Kirigami.Theme.textColor;
+        }
+
+        if (key === "heat" && Number(reading.value) !== 0) {
+            return Kirigami.Theme.negativeTextColor;
+        }
+
+        if (key === "jf" && Number(reading.value) !== 0) {
+            return Kirigami.Theme.positiveTextColor;
+        }
+
+        return Kirigami.Theme.textColor;
     }
 
     /**
@@ -287,7 +331,7 @@ PlasmoidItem {
         var command = pendingCommand;
 
         pendingCommand = "";
-        pendingOutsideConfigured = false;
+        pendingSides = null;
 
         if (command.length > 0) {
             try {
@@ -303,17 +347,17 @@ PlasmoidItem {
 
         var result = Grafana.parseCurlOutput(data, pendingNames,
             Grafana.apiUrl(root.grafanaBaseUrl()),
-            root.pendingOutsideConfigured);
+            root.pendingSides);
 
         pendingNames = [];
-        root.pendingOutsideConfigured = false;
+        root.pendingSides = null;
 
         // Grafana (or a backend) can briefly answer 5xx; retry a couple of
         // times before showing a hard failure.
         if (result.status >= 500 && retryCount < 2) {
             retryCount += 1;
             readings = result.rows;
-            root.outside = result.outside || null;
+            root.sides = result.sides || null;
             errorText = result.error + " " + i18n("Retrying…");
             retryTimer.restart();
             return;
@@ -321,20 +365,20 @@ PlasmoidItem {
 
         retryCount = 0;
         readings = result.rows;
-        root.outside = result.outside || null;
+        root.sides = result.sides || null;
         errorText = result.error;
     }
 
     function fetchData() {
         var base = grafanaBaseUrl();
         var names = sensorNames();
-        var outside = outsideSource();
+        var sides = sideSources();
 
         if (base.length === 0) {
             abortRequest();
             loading = false;
             readings = [];
-            root.outside = null;
+            root.sides = null;
             errorText = i18n("Set the Grafana API URL in the widget settings"
                 + " or ~/.config/sensorbridge.");
             return;
@@ -344,7 +388,7 @@ PlasmoidItem {
             abortRequest();
             loading = false;
             readings = [];
-            root.outside = null;
+            root.sides = null;
             errorText = i18n("Use the Grafana API base URL"
                 + " (http://grafana:3000), not a public dashboard link."
                 + " Public dashboard share tokens cannot query /api/ds/query"
@@ -358,7 +402,7 @@ PlasmoidItem {
             abortRequest();
             loading = false;
             readings = [];
-            root.outside = null;
+            root.sides = null;
             errorText = i18n("The configured token is a public dashboard"
                 + " share token, not a Grafana API token. Create a service"
                 + " account token with the Viewer role and paste that into"
@@ -374,14 +418,14 @@ PlasmoidItem {
             "bucket": configValue("bucket"),
             "measurement": configValue("measurement"),
             "names": names,
-            "outside": outside,
+            "sides": sides,
             "token": token,
             "bypassProxy": configValue("bypassProxy")
         });
 
         pendingCommand = command;
         pendingNames = names;
-        pendingOutsideConfigured = outside !== null;
+        pendingSides = sides;
         loading = true;
         errorText = "";
 
@@ -484,6 +528,14 @@ PlasmoidItem {
             root.applyConfigChange("outside");
         }
 
+        function onBoilerHeatChanged() {
+            root.applyConfigChange("boilerHeat");
+        }
+
+        function onJfConnectionsChanged() {
+            root.applyConfigChange("jfConnections");
+        }
+
         function onBypassProxyChanged() {
             root.applyConfigChange("bypassProxy");
         }
@@ -543,11 +595,13 @@ PlasmoidItem {
 
         property string value: "–"
         property string label: ""
+        property color valueColor: Kirigami.Theme.textColor
 
         spacing: 0
 
         PlasmaComponents3.Label {
             text: metric.value
+            color: metric.valueColor
             font.bold: true
             font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.25
         }
@@ -614,11 +668,12 @@ PlasmoidItem {
             }
 
             ColumnLayout {
-                visible: root.outside !== null
+                visible: root.hasSides()
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
                 RowLayout {
+                    visible: root.sideReading("outside") !== null
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
 
@@ -629,9 +684,11 @@ PlasmoidItem {
                     }
 
                     PlasmaComponents3.Label {
-                        text: root.outside && !root.outside.missing
+                        text: root.sideReading("outside")
+                            && !root.sideReading("outside").missing
                             ? Grafana.formatAge(
-                                root.outside.timestamp, root.nowMs)
+                                root.sideReading("outside").timestamp,
+                                root.nowMs)
                             : i18n("no data")
                         color: Kirigami.Theme.disabledTextColor
                         font: Kirigami.Theme.smallFont
@@ -643,19 +700,38 @@ PlasmoidItem {
                     spacing: Kirigami.Units.largeSpacing
 
                     Metric {
+                        visible: root.sideReading("outside") !== null
+                        Layout.fillWidth: true
                         value: Grafana.formatTemperature(
-                            root.outside ? root.outside.temperature : null)
+                            root.sideReading("outside")
+                                ? root.sideReading("outside").value : null)
                         label: i18n("Temperature")
                     }
 
-                    Item {
+                    Metric {
+                        visible: root.sideReading("heat") !== null
                         Layout.fillWidth: true
+                        value: Grafana.formatKbtu(
+                            root.sideReading("heat")
+                                ? root.sideReading("heat").value : null)
+                        valueColor: root.sideValueColor("heat")
+                        label: i18n("High mass heat")
+                    }
+
+                    Metric {
+                        visible: root.sideReading("jf") !== null
+                        Layout.fillWidth: true
+                        value: Grafana.formatCount(
+                            root.sideReading("jf")
+                                ? root.sideReading("jf").value : null)
+                        valueColor: root.sideValueColor("jf")
+                        label: i18n("JF connections")
                     }
                 }
             }
 
             Rectangle {
-                visible: root.outside !== null && root.readings.length > 0
+                visible: root.hasSides() && root.readings.length > 0
                 Layout.fillWidth: true
                 implicitHeight: 1
                 color: Kirigami.Theme.textColor

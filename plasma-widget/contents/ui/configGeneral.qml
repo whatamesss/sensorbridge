@@ -14,20 +14,23 @@ Kirigami.FormLayout {
     property alias cfg_measurement: measurementField.text
     property alias cfg_sensors: sensorsField.text
     property alias cfg_outside: outsideField.text
+    property alias cfg_boilerHeat: boilerHeatField.text
+    property alias cfg_jfConnections: jfConnectionsField.text
     property alias cfg_refreshSeconds: refreshSpin.value
     property alias cfg_bypassProxy: proxyCheck.checked
 
     // Plasma gives the applet configuration dialog a fixed height hint and
     // does not grow it to this page's implicitHeight, so the last note is
     // clipped. Nudge the window itself; a spacer or a larger implicitHeight
-    // would only add a scrollable line inside the dialog.
+    // would only add a scrollable line inside the dialog. The two extra columns
+    // for the source settings need room too.
     Component.onCompleted: {
         if (typeof configDialog === "undefined" || !configDialog) {
             return;
         }
 
         Qt.callLater(function () {
-            configDialog.height += Kirigami.Units.gridUnit * 2;
+            configDialog.height += Kirigami.Units.gridUnit * 6;
         });
     }
 
@@ -97,6 +100,18 @@ Kirigami.FormLayout {
         placeholderText: i18n("measurement|tag=value|field — empty hides it")
     }
 
+    QQC2.TextField {
+        id: boilerHeatField
+        Kirigami.FormData.label: i18n("High-mass heating:")
+        placeholderText: i18n("measurement|tag=value|field — empty hides it")
+    }
+
+    QQC2.TextField {
+        id: jfConnectionsField
+        Kirigami.FormData.label: i18n("Jellyfin connections:")
+        placeholderText: i18n("measurement|tag=value|field — empty hides it")
+    }
+
     QQC2.SpinBox {
         id: refreshSpin
         Kirigami.FormData.label: i18n("Refresh interval:")
@@ -118,8 +133,9 @@ Kirigami.FormLayout {
             + " → Service accounts with the Viewer role. Settings are saved"
             + " to ~/.config/sensorbridge in plain text. Append =Label to a"
             + " sensor name to change its display label. Leave the sensor list"
-            + " empty to show every sensor in the bucket. The outside reading"
-            + " comes from another measurement in the same bucket, written as"
-            + " measurement|tag=value|field; leave it empty to hide the row.")
+            + " empty to show every sensor in the bucket. The extra readings"
+            + " come from other measurements in the same bucket, written as"
+            + " measurement|tag=value|field; leave one empty to hide it. Boiler"
+            + " heat is load2_btu (BTU/h), shown as kBtu/h.")
     }
 }

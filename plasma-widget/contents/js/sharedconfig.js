@@ -20,8 +20,8 @@ var SENTINEL = "configured";
 var READ_DONE = "__SENSORBRIDGE_READ_DONE__";
 
 var KEYS = ["grafanaUrl", "dashboardUrl", "apiToken", "datasourceUid",
-    "bucket", "measurement", "sensors", "outside", "refreshSeconds",
-    "bypassProxy"];
+    "bucket", "measurement", "sensors", "outside", "boilerHeat",
+    "jfConnections", "refreshSeconds", "bypassProxy"];
 
 /**
  * Reads the shared file. The marker is always printed so the executable

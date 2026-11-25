@@ -2,8 +2,9 @@
 
 A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
 row per sensor, with temperature, humidity, dew point, battery and the age of
-the reading, plus an optional **Outside** row fed by another measurement in the
-same InfluxDB bucket.
+the reading, plus optional single-value readings (outside temperature,
+high-mass boiler heat and Jellyfin connections) fed by other measurements in
+the same InfluxDB bucket.
 
 ![SensorBridge widget showing two sensors](../docs/screenshots/plasma-widget.png)
 
@@ -97,7 +98,9 @@ survives a restart even if the applet is removed and re-added:
 | InfluxDB bucket | `sensors` | Bucket fed by Telegraf |
 | Measurement | `mqtt_consumer` | Measurement written by Telegraf |
 | Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; append `=Label` to override the display label; empty shows all |
-| Outside temperature | `ibc_boiler\|boiler=SL10-85G3\|outdoor_c` | `measurement\|tag=value\|field` in the same bucket; empty hides the Outside row |
+| Outside temperature | `ibc_boiler\|boiler=SL10-85G3\|outdoor_c` | `measurement\|tag=value\|field` in the same bucket; empty hides the reading |
+| High-mass heating | `ibc_boiler\|boiler=SL10-85G3\|load2_btu` | BTU/h field, shown as kBtu/h; red when non-zero; empty hides it |
+| Jellyfin connections | `jellyfin_connections\|service=jellyfin\|value` | Connection count; green when non-zero; empty hides it |
 | Refresh interval | 60 s | Minimum 10 s |
 | Bypass system proxy | on | Turn off to let `curl` use the session's proxy settings |
 
@@ -137,6 +140,8 @@ bucket=sensors
 measurement=mqtt_consumer
 sensors=GVH5075_B6D2=House,GVH5075_E22C=Garage
 outside=ibc_boiler|boiler=SL10-85G3|outdoor_c
+boilerHeat=ibc_boiler|boiler=SL10-85G3|load2_btu
+jfConnections=jellyfin_connections|service=jellyfin|value
 refreshSeconds=60
 bypassProxy=true
 ```
@@ -178,9 +183,10 @@ Configured sensors with no point in the last 24 hours stay visible as
 **no data**, so a sensor that stops reporting does not simply disappear. A
 reading named `TEST` is ignored.
 
-A second query (`refId B`) fills the **Outside** row when **Outside
-temperature** is set. It reads another measurement from the same bucket and
-takes the newest point of one field:
+Up to three extra single-value readings can sit above the sensors. Each one is
+configured separately and fetched with its own query (`refId B`, `C` and `D` in
+that order), which reads another measurement from the same bucket and takes the
+newest point of one field:
 
 ```flux
 from(bucket: "sensors")
@@ -191,11 +197,18 @@ from(bucket: "sensors")
   |> tail(n: 1)
 ```
 
-The setting is written as `measurement|tag=value|field`; the tag part is
-optional, so `weather|temp_c` also works. The default matches the IBC boiler
-collector under `local-only/ibc-boiler`. An empty setting hides the row. A
-failed outside query does not hide the sensors; the row simply shows **no
-data**.
+The settings are written as `measurement|tag=value|field`; the tag part is
+optional, so `weather|temp_c` also works. Defaults match the collectors under
+`local-only/`:
+
+- **Outside temperature** — `ibc_boiler|boiler=SL10-85G3|outdoor_c` (°C).
+- **High-mass heating** — `ibc_boiler|boiler=SL10-85G3|load2_btu`. The value is
+  BTU/h and is shown as kBtu/h; it turns red while non-zero.
+- **Jellyfin connections** — `jellyfin_connections|service=jellyfin|value`,
+  shown as a count and turning green while non-zero.
+
+An empty setting hides that reading. A failed extra query does not hide the
+sensors; the affected reading simply shows **no data**.
 
 Known sensor suffixes get a friendly room label by default:
 `GVH5075_B6D2 (House)` and `GVH5075_E22C (Garage)`. Append `=Label` in
@@ -241,7 +254,8 @@ shows as **–** when either value is missing.
   the local network or install the CA in the system trust store.
 - **No data for a sensor** — verify the `name` tag in InfluxDB matches the
   configured sensor names, and that the measurement and bucket are correct.
-- **Outside shows no data** — check the **Outside temperature** source against
-  the measurement, tag and field written by the other collector. An invalid
-  entry (for example a missing field or a tag key that is not an identifier)
-  hides the row instead of querying.
+- **An extra reading shows no data** — check its **Outside temperature**,
+  **High-mass heating** or **Jellyfin connections** source against the
+  measurement, tag and field written by the other collector. An invalid entry
+  (for example a missing field or a tag key that is not an identifier) hides
+  that reading instead of querying.

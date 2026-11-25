@@ -2,6 +2,11 @@
 
 var FIELDS = ["temperature", "humidity", "battery"];
 
+// Extra single-value readings shown above the sensors. Each has its own
+// configurable source; the order here is also the query refId order (B, C, D).
+var SIDE_KEYS = ["outside", "heat", "jf"];
+var SIDE_REFIDS = {"outside": "B", "heat": "C", "jf": "D"};
+
 // Friendly room names for the two sensors in the usual setup. Matching is on
 // the trailing four characters, so the label survives a changed name prefix.
 var SENSOR_LABELS = {
@@ -59,13 +64,13 @@ function parseSensorList(raw) {
 }
 
 /**
- * Parses the Outside temperature setting. The form is
+ * Parses an extra reading's source. The form is
  * "measurement|tag=value|field" or "measurement|field" without a tag. Returns
- * null when the setting is empty or malformed, which hides the outside row
+ * null when the setting is empty or malformed, which hides that reading
  * instead of sending a broken query. The tag key becomes part of the Flux
  * expression, so it is limited to an identifier.
  */
-function parseOutsideSource(raw) {
+function parseSideSource(raw) {
     var text = String(raw === null || raw === undefined ? "" : raw).trim();
 
     if (text.length === 0) {
@@ -150,8 +155,8 @@ function buildFlux(bucket, measurement, names) {
     return lines.join("\n");
 }
 
-/** Flux that returns the newest point of the outside-temperature field. */
-function buildOutsideFlux(bucket, source) {
+/** Flux that returns the newest point of one extra reading's field. */
+function buildSideFlux(bucket, source) {
     var conditions = [
         "r._measurement == \"" + escapeFlux(source.measurement) + "\""
     ];
@@ -190,14 +195,23 @@ function queryBody(options) {
         "resultFormat": "time_series"
     }];
 
-    if (options.outside) {
-        queries.push({
-            "refId": "B",
-            "datasource": datasource,
-            "query": buildOutsideFlux(options.bucket, options.outside),
-            "rawQuery": true,
-            "resultFormat": "time_series"
-        });
+    if (options.sides) {
+        for (var i = 0; i < SIDE_KEYS.length; i++) {
+            var key = SIDE_KEYS[i];
+            var source = options.sides[key];
+
+            if (!source) {
+                continue;
+            }
+
+            queries.push({
+                "refId": SIDE_REFIDS[key],
+                "datasource": datasource,
+                "query": buildSideFlux(options.bucket, source),
+                "rawQuery": true,
+                "resultFormat": "time_series"
+            });
+        }
     }
 
     return {
@@ -322,7 +336,7 @@ function buildCurlCommand(options) {
  * curl's -w adds the HTTP status, the peer it actually talked to and the
  * response content type as the last line of stdout.
  */
-function parseCurlOutput(data, configuredNames, url, outsideConfigured) {
+function parseCurlOutput(data, configuredNames, url, sides) {
     var stdout = String(data && data.stdout !== undefined ? data.stdout : "");
     var stderr = String(data && data.stderr !== undefined ? data.stderr : "")
         .trim();
@@ -343,7 +357,7 @@ function parseCurlOutput(data, configuredNames, url, outsideConfigured) {
             "error": message,
             "rows": [],
             "status": 0,
-            "outside": outsideConfigured ? missingOutside() : null
+            "sides": missingSides(sides)
         };
     }
 
@@ -355,8 +369,7 @@ function parseCurlOutput(data, configuredNames, url, outsideConfigured) {
         "remote": remote,
         "url": url || ""
     };
-    var result = parseResponse(status, body, configuredNames, context,
-        outsideConfigured);
+    var result = parseResponse(status, body, configuredNames, context, sides);
 
     result.status = status;
 
@@ -463,18 +476,17 @@ function httpError(status, payload, text, context) {
  * Converts a /api/ds/query response into widget rows, in the order the
  * sensors are configured. A configured sensor without a recent point is kept
  * as a "missing" row so the widget does not silently hide a dead sensor.
- * When `outsideConfigured` is set, the same is done for the outside reading
- * returned by query B; `outside` is null when no outside source is configured.
+ * `sides` maps each configured extra reading to its parsed source; the same
+ * "missing" treatment applies to the readings returned by queries B, C and D.
  */
-function parseResponse(status, text, configuredNames, context,
-        outsideConfigured) {
-    var noOutside = outsideConfigured ? missingOutside() : null;
+function parseResponse(status, text, configuredNames, context, sides) {
+    var noSides = missingSides(sides);
 
     if (status === 0) {
         return {
             "error": "Could not reach Grafana.",
             "rows": [],
-            "outside": noOutside
+            "sides": noSides
         };
     }
 
@@ -489,7 +501,7 @@ function parseResponse(status, text, configuredNames, context,
         return {
             "error": httpError(status, failure, text, context),
             "rows": [],
-            "outside": noOutside
+            "sides": noSides
         };
     }
 
@@ -501,30 +513,30 @@ function parseResponse(status, text, configuredNames, context,
         return {
             "error": "Grafana returned invalid JSON.",
             "rows": [],
-            "outside": noOutside
+            "sides": noSides
         };
     }
 
-    var outside = outsideFromResults(payload, outsideConfigured);
+    var readings = sidesFromResults(payload, sides);
     var result = payload && payload.results ? payload.results.A : null;
 
     if (!result) {
         return {
             "error": "Grafana returned no query results.",
             "rows": [],
-            "outside": outside
+            "sides": readings
         };
     }
 
     if (result.error) {
-        return {"error": String(result.error), "rows": [], "outside": outside};
+        return {"error": String(result.error), "rows": [], "sides": readings};
     }
 
     if (result.status && result.status !== 200) {
         return {
             "error": httpError(result.status, result, "", context),
             "rows": [],
-            "outside": outside
+            "sides": readings
         };
     }
 
@@ -561,30 +573,41 @@ function parseResponse(status, text, configuredNames, context,
         }
     }
 
-    return {"error": "", "rows": rows, "outside": outside};
+    return {"error": "", "rows": rows, "sides": readings};
 }
 
 /**
- * Reads query B's single frame. A failed or empty outside query leaves the
- * sensor rows intact and shows the outside row as "no data".
+ * Reads one frame per configured extra reading. A failed or empty query leaves
+ * the sensor rows intact and shows that reading as "no data".
  */
-function outsideFromResults(payload, configured) {
-    if (!configured) {
-        return null;
+function sidesFromResults(payload, configured) {
+    var readings = {};
+
+    for (var i = 0; i < SIDE_KEYS.length; i++) {
+        var key = SIDE_KEYS[i];
+        var source = configured ? configured[key] : null;
+
+        if (!source) {
+            readings[key] = null;
+            continue;
+        }
+
+        var result = payload && payload.results
+            ? payload.results[SIDE_REFIDS[key]] : null;
+        var frames = result && !result.error ? result.frames || [] : [];
+        var reading = null;
+
+        for (var j = 0; j < frames.length && !reading; j++) {
+            reading = readingFromFrame(frames[j]);
+        }
+
+        readings[key] = reading || missingReading();
     }
 
-    var result = payload && payload.results ? payload.results.B : null;
-    var frames = result && !result.error ? result.frames || [] : [];
-    var reading = null;
-
-    for (var i = 0; i < frames.length && !reading; i++) {
-        reading = outsideFromFrame(frames[i]);
-    }
-
-    return reading || missingOutside();
+    return readings;
 }
 
-function outsideFromFrame(frame) {
+function readingFromFrame(frame) {
     var schema = frame && frame.schema;
     var data = frame && frame.data;
 
@@ -623,26 +646,40 @@ function outsideFromFrame(frame) {
         return null;
     }
 
-    var temperature = numberOrNull(columns, valueIndex);
+    var value = numberOrNull(columns, valueIndex);
 
-    if (temperature === null) {
+    if (value === null) {
         return null;
     }
 
     return {
-        "temperature": temperature,
+        "value": value,
         "timestamp": timeIndex < 0
             ? 0 : toMillis(lastValue(columns[timeIndex])),
         "missing": false
     };
 }
 
-function missingOutside() {
+function missingReading() {
     return {
-        "temperature": null,
+        "value": null,
         "timestamp": 0,
         "missing": true
     };
+}
+
+/** One entry per side key; null marks a reading that is not configured. */
+function missingSides(configured) {
+    var readings = {};
+
+    for (var i = 0; i < SIDE_KEYS.length; i++) {
+        var key = SIDE_KEYS[i];
+
+        readings[key] = configured && configured[key]
+            ? missingReading() : null;
+    }
+
+    return readings;
 }
 
 function rowFromFrame(frame) {
@@ -827,6 +864,20 @@ function formatBattery(value) {
     return value === null || value === undefined
         ? "–"
         : Math.round(Number(value)) + " %";
+}
+
+/** BTU/h (as written by the boiler collector) as thousands of BTU/h. */
+function formatKbtu(value) {
+    return value === null || value === undefined
+        ? "–"
+        : Math.round(Number(value) / 1000) + " kBtu/h";
+}
+
+/** Connection count, shown without a unit because the label names it. */
+function formatCount(value) {
+    return value === null || value === undefined
+        ? "–"
+        : String(Math.round(Number(value)));
 }
 
 function formatAge(timestamp, nowMs) {

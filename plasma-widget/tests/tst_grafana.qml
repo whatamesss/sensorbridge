@@ -41,7 +41,7 @@ Item {
         });
     }
 
-    function responseWithB(frames, outsideFrames) {
+    function responseWithB(frames, outsideFrames, heatFrames, jfFrames) {
         return JSON.stringify({
             "results": {
                 "A": {
@@ -51,6 +51,14 @@ Item {
                 "B": {
                     "status": 200,
                     "frames": outsideFrames
+                },
+                "C": {
+                    "status": 200,
+                    "frames": heatFrames || []
+                },
+                "D": {
+                    "status": 200,
+                    "frames": jfFrames || []
                 }
             }
         });
@@ -211,28 +219,36 @@ Item {
         check(body.queries[0].query.indexOf('from(bucket: "sensors")') >= 0,
             "bucket is sent");
         check(body.queries.length === 1,
-            "no outside query without an outside source");
+            "no extra queries without extra sources");
 
-        var outside = Grafana.parseOutsideSource(
+        var outside = Grafana.parseSideSource(
             "ibc_boiler|boiler=SL10-85G3|outdoor_c");
+        var heat = Grafana.parseSideSource(
+            "ibc_boiler|boiler=SL10-85G3|load2_btu");
+        var jf = Grafana.parseSideSource(
+            "jellyfin_connections|service=jellyfin|value");
         check(outside !== null, "outside source is parsed");
         check(outside.measurement === "ibc_boiler",
             "outside measurement is parsed");
         check(outside.tagKey === "boiler", "outside tag key is parsed");
         check(outside.tagValue === "SL10-85G3", "outside tag value is parsed");
         check(outside.field === "outdoor_c", "outside field is parsed");
+        check(heat !== null && heat.field === "load2_btu",
+            "high-mass heat source is parsed");
+        check(jf !== null && jf.measurement === "jellyfin_connections"
+            && jf.field === "value", "Jellyfin source is parsed");
 
-        var outsideNoTag = Grafana.parseOutsideSource("weather|temp_c");
+        var outsideNoTag = Grafana.parseSideSource("weather|temp_c");
         check(outsideNoTag !== null && outsideNoTag.tagKey === "",
-            "outside source works without a tag");
-        check(Grafana.parseOutsideSource("") === null,
-            "empty outside source is disabled");
-        check(Grafana.parseOutsideSource("weather") === null,
-            "outside source without a field is rejected");
-        check(Grafana.parseOutsideSource("weather|1bad=x|temp") === null,
-            "outside tag key must be an identifier");
+            "source works without a tag");
+        check(Grafana.parseSideSource("") === null,
+            "empty source is disabled");
+        check(Grafana.parseSideSource("weather") === null,
+            "source without a field is rejected");
+        check(Grafana.parseSideSource("weather|1bad=x|temp") === null,
+            "tag key must be an identifier");
 
-        var outsideFlux = Grafana.buildOutsideFlux("sensors", outside);
+        var outsideFlux = Grafana.buildSideFlux("sensors", outside);
         check(outsideFlux.indexOf('r._measurement == "ibc_boiler"') >= 0,
             "outside measurement is filtered");
         check(outsideFlux.indexOf('r.boiler == "SL10-85G3"') >= 0,
@@ -242,40 +258,61 @@ Item {
         check(outsideFlux.indexOf("|> tail(n: 1)") >= 0,
             "outside query takes the last point");
 
+        var sideSources = {
+            "outside": outside,
+            "heat": heat,
+            "jf": jf
+        };
         var outsideBody = Grafana.queryBody({
             "datasourceUid": "influxdb",
             "bucket": "sensors",
             "measurement": "mqtt_consumer",
             "names": ["A"],
-            "outside": outside
+            "sides": sideSources
         });
-        check(outsideBody.queries.length === 2,
-            "outside source adds a second query");
-        check(outsideBody.queries[1].refId === "B",
-            "outside query uses refId B");
+        check(outsideBody.queries.length === 4,
+            "three extra sources add three queries");
+        check(outsideBody.queries[1].refId === "B"
+            && outsideBody.queries[2].refId === "C"
+            && outsideBody.queries[3].refId === "D",
+            "extra queries use refIds B, C and D");
         check(outsideBody.queries[1].query
             .indexOf('r._measurement == "ibc_boiler"') >= 0,
             "outside query is sent");
+        check(outsideBody.queries[2].query
+            .indexOf('r._field == "load2_btu"') >= 0,
+            "heat query is sent");
+        check(outsideBody.queries[3].query
+            .indexOf('r._measurement == "jellyfin_connections"') >= 0,
+            "Jellyfin query is sent");
 
-        var withOutside = Grafana.parseResponse(200, responseWithB([], [
+        var withSides = Grafana.parseResponse(200, responseWithB([], [
             outsideFrame("_value", 3.25, now)
-        ]), [], null, true);
-        check(withOutside.outside !== null, "outside reading is parsed");
-        check(withOutside.outside.temperature === 3.25,
+        ], [
+            outsideFrame("_value", 45000, now - 1000)
+        ], [
+            outsideFrame("_value", 3, now - 2000)
+        ]), [], null, sideSources);
+        check(withSides.sides.outside !== null, "outside reading is parsed");
+        check(withSides.sides.outside.value === 3.25,
             "outside temperature is parsed");
-        check(withOutside.outside.timestamp === now,
+        check(withSides.sides.outside.timestamp === now,
             "outside timestamp is parsed");
-        check(!withOutside.outside.missing, "outside reading has data");
+        check(!withSides.sides.outside.missing, "outside reading has data");
+        check(withSides.sides.heat.value === 45000,
+            "high-mass heat is parsed");
+        check(withSides.sides.jf.value === 3,
+            "Jellyfin connections are parsed");
 
         var outsideNamed = Grafana.parseResponse(200, responseWithB([], [
             outsideFrame("outdoor_c", -4.5, now - 5000)
-        ]), [], null, true);
-        check(outsideNamed.outside.temperature === -4.5,
+        ]), [], null, {"outside": outside});
+        check(outsideNamed.sides.outside.value === -4.5,
             "outside field column is accepted");
 
         var outsideEmpty = Grafana.parseResponse(200, responseWithB([], []),
-            [], null, true);
-        check(outsideEmpty.outside.missing,
+            [], null, {"outside": outside});
+        check(outsideEmpty.sides.outside.missing,
             "missing outside point is flagged");
 
         var outsideFailed = Grafana.parseResponse(200, JSON.stringify({
@@ -287,17 +324,17 @@ Item {
                 },
                 "B": {"status": 200, "error": "invalid flux"}
             }
-        }), ["GVH5075_B6D2"], null, true);
+        }), ["GVH5075_B6D2"], null, {"outside": outside});
         check(outsideFailed.rows.length === 1
             && !outsideFailed.rows[0].missing,
             "failed outside query keeps the sensor rows");
-        check(outsideFailed.outside.missing,
+        check(outsideFailed.sides.outside.missing,
             "failed outside query shows no data");
 
         var noOutsideWanted = Grafana.parseResponse(200, responseWithB([], [
             outsideFrame("_value", 3.25, now)
-        ]), [], null, false);
-        check(noOutsideWanted.outside === null,
+        ]), [], null, {});
+        check(noOutsideWanted.sides.outside === null,
             "outside reading is ignored when disabled");
 
         check(Grafana.apiUrl("http://grafana:3000/")
@@ -385,7 +422,8 @@ Item {
         }, []);
         check(curlOk.status === 200, "curl output keeps the status");
         check(curlOk.error.length === 0, "curl 200 has no error");
-        check(curlOk.outside === null, "curl output has no outside by default");
+        check(curlOk.sides.outside === null,
+            "curl output has no extra readings by default");
 
         var curlOutside = Grafana.parseCurlOutput({
             "stdout": responseWithB([], [
@@ -393,8 +431,8 @@ Item {
             ]) + "\n200",
             "stderr": "",
             "exit code": 0
-        }, [], "", true);
-        check(curlOutside.outside.temperature === -1.5,
+        }, [], "", {"outside": outside});
+        check(curlOutside.sides.outside.value === -1.5,
             "curl output keeps the outside reading");
 
         var curlFailed = Grafana.parseCurlOutput({
@@ -519,6 +557,9 @@ Item {
             "temperature format");
         check(Grafana.formatHumidity(45.67) === "45.7 %", "humidity format");
         check(Grafana.formatBattery(94.6) === "95 %", "battery format");
+        check(Grafana.formatKbtu(45000) === "45 kBtu/h", "kBtu/h format");
+        check(Grafana.formatKbtu(null) === "–", "null kBtu/h format");
+        check(Grafana.formatCount(3.4) === "3", "connection count format");
         check(Grafana.formatTemperature(null) === "–", "null format");
         check(Grafana.formatAge(now, now) === "just now", "age now");
         check(Grafana.formatAge(now - 120000, now) === "2 min ago",
