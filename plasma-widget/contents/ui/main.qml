@@ -673,29 +673,6 @@ PlasmoidItem {
                 spacing: Kirigami.Units.smallSpacing
 
                 RowLayout {
-                    visible: root.sideReading("outside") !== null
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-
-                    PlasmaComponents3.Label {
-                        text: i18n("Outside")
-                        font.bold: true
-                        Layout.fillWidth: true
-                    }
-
-                    PlasmaComponents3.Label {
-                        text: root.sideReading("outside")
-                            && !root.sideReading("outside").missing
-                            ? Grafana.formatAge(
-                                root.sideReading("outside").timestamp,
-                                root.nowMs)
-                            : i18n("no data")
-                        color: Kirigami.Theme.disabledTextColor
-                        font: Kirigami.Theme.smallFont
-                    }
-                }
-
-                RowLayout {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.largeSpacing
 
@@ -705,7 +682,7 @@ PlasmoidItem {
                         value: Grafana.formatTemperature(
                             root.sideReading("outside")
                                 ? root.sideReading("outside").value : null)
-                        label: i18n("Temperature")
+                        label: i18n("Outside")
                     }
 
                     Metric {
