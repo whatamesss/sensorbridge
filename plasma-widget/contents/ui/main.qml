@@ -742,7 +742,6 @@ PlasmoidItem {
                         value: root.sideReading("heat") !== null
                             ? root.sideText("heat") : ""
                         valueColor: root.sideValueColor("heat")
-                        valueAlignment: Qt.AlignRight
                         label: root.sideReading("heat") !== null
                             ? i18n("High mass") : ""
                     }
@@ -753,6 +752,7 @@ PlasmoidItem {
                         value: root.sideReading("errors") !== null
                             ? root.sideText("errors") : ""
                         valueColor: root.sideValueColor("errors")
+                        valueAlignment: Qt.AlignRight
                         label: root.sideReading("errors") !== null
                             ? i18n("Errors") : ""
                     }
