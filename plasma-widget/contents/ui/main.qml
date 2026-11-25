@@ -11,8 +11,10 @@ PlasmoidItem {
     id: root
 
     property var readings: []
+    property var outside: null
     property string pendingCommand: ""
     property var pendingNames: []
+    property bool pendingOutsideConfigured: false
     property bool loading: false
     property string errorText: ""
     property int retryCount: 0
@@ -60,6 +62,10 @@ PlasmoidItem {
 
         if (key === "sensors") {
             return cfg.sensors;
+        }
+
+        if (key === "outside") {
+            return cfg.outside;
         }
 
         if (key === "refreshSeconds") {
@@ -120,7 +126,7 @@ PlasmoidItem {
     function syncPlasmaConfiguration(values) {
         var cfg = Plasmoid.configuration;
         var keys = ["grafanaUrl", "dashboardUrl", "apiToken", "datasourceUid",
-            "bucket", "measurement", "sensors", "refreshSeconds",
+            "bucket", "measurement", "sensors", "outside", "refreshSeconds",
             "bypassProxy"];
 
         for (var i = 0; i < keys.length; i++) {
@@ -236,6 +242,11 @@ PlasmoidItem {
         return Grafana.parseSensorList(configValue("sensors")).names;
     }
 
+    /** Parsed outside-temperature source, or null when it is disabled. */
+    function outsideSource() {
+        return Grafana.parseOutsideSource(configValue("outside"));
+    }
+
     /**
      * Display name for a sensor: the `=Label` from Sensor names, or the
      * built-in label for the usual sensors, or the raw name.
@@ -276,6 +287,7 @@ PlasmoidItem {
         var command = pendingCommand;
 
         pendingCommand = "";
+        pendingOutsideConfigured = false;
 
         if (command.length > 0) {
             try {
@@ -290,15 +302,18 @@ PlasmoidItem {
         nowMs = Date.now();
 
         var result = Grafana.parseCurlOutput(data, pendingNames,
-            Grafana.apiUrl(root.grafanaBaseUrl()));
+            Grafana.apiUrl(root.grafanaBaseUrl()),
+            root.pendingOutsideConfigured);
 
         pendingNames = [];
+        root.pendingOutsideConfigured = false;
 
         // Grafana (or a backend) can briefly answer 5xx; retry a couple of
         // times before showing a hard failure.
         if (result.status >= 500 && retryCount < 2) {
             retryCount += 1;
             readings = result.rows;
+            root.outside = result.outside || null;
             errorText = result.error + " " + i18n("Retrying…");
             retryTimer.restart();
             return;
@@ -306,17 +321,20 @@ PlasmoidItem {
 
         retryCount = 0;
         readings = result.rows;
+        root.outside = result.outside || null;
         errorText = result.error;
     }
 
     function fetchData() {
         var base = grafanaBaseUrl();
         var names = sensorNames();
+        var outside = outsideSource();
 
         if (base.length === 0) {
             abortRequest();
             loading = false;
             readings = [];
+            root.outside = null;
             errorText = i18n("Set the Grafana API URL in the widget settings"
                 + " or ~/.config/sensorbridge.");
             return;
@@ -326,6 +344,7 @@ PlasmoidItem {
             abortRequest();
             loading = false;
             readings = [];
+            root.outside = null;
             errorText = i18n("Use the Grafana API base URL"
                 + " (http://grafana:3000), not a public dashboard link."
                 + " Public dashboard share tokens cannot query /api/ds/query"
@@ -339,6 +358,7 @@ PlasmoidItem {
             abortRequest();
             loading = false;
             readings = [];
+            root.outside = null;
             errorText = i18n("The configured token is a public dashboard"
                 + " share token, not a Grafana API token. Create a service"
                 + " account token with the Viewer role and paste that into"
@@ -354,12 +374,14 @@ PlasmoidItem {
             "bucket": configValue("bucket"),
             "measurement": configValue("measurement"),
             "names": names,
+            "outside": outside,
             "token": token,
             "bypassProxy": configValue("bypassProxy")
         });
 
         pendingCommand = command;
         pendingNames = names;
+        pendingOutsideConfigured = outside !== null;
         loading = true;
         errorText = "";
 
@@ -456,6 +478,10 @@ PlasmoidItem {
 
         function onSensorsChanged() {
             root.applyConfigChange("sensors");
+        }
+
+        function onOutsideChanged() {
+            root.applyConfigChange("outside");
         }
 
         function onBypassProxyChanged() {
@@ -585,6 +611,55 @@ PlasmoidItem {
                 font: Kirigami.Theme.smallFont
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
+            }
+
+            ColumnLayout {
+                visible: root.outside !== null
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    PlasmaComponents3.Label {
+                        text: i18n("Outside")
+                        font.bold: true
+                        Layout.fillWidth: true
+                    }
+
+                    PlasmaComponents3.Label {
+                        text: root.outside && !root.outside.missing
+                            ? Grafana.formatAge(
+                                root.outside.timestamp, root.nowMs)
+                            : i18n("no data")
+                        color: Kirigami.Theme.disabledTextColor
+                        font: Kirigami.Theme.smallFont
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+
+                    Metric {
+                        value: Grafana.formatTemperature(
+                            root.outside ? root.outside.temperature : null)
+                        label: i18n("Temperature")
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: root.outside !== null && root.readings.length > 0
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: Kirigami.Theme.textColor
+                opacity: 0.15
             }
 
             Repeater {

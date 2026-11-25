@@ -13,6 +13,7 @@ Kirigami.FormLayout {
     property alias cfg_bucket: bucketField.text
     property alias cfg_measurement: measurementField.text
     property alias cfg_sensors: sensorsField.text
+    property alias cfg_outside: outsideField.text
     property alias cfg_refreshSeconds: refreshSpin.value
     property alias cfg_bypassProxy: proxyCheck.checked
 
@@ -90,6 +91,12 @@ Kirigami.FormLayout {
         placeholderText: i18n("GVH5075_B6D2=House, GVH5075_E22C=Garage")
     }
 
+    QQC2.TextField {
+        id: outsideField
+        Kirigami.FormData.label: i18n("Outside temperature:")
+        placeholderText: i18n("measurement|tag=value|field — empty hides it")
+    }
+
     QQC2.SpinBox {
         id: refreshSpin
         Kirigami.FormData.label: i18n("Refresh interval:")
@@ -111,6 +118,8 @@ Kirigami.FormLayout {
             + " → Service accounts with the Viewer role. Settings are saved"
             + " to ~/.config/sensorbridge in plain text. Append =Label to a"
             + " sensor name to change its display label. Leave the sensor list"
-            + " empty to show every sensor in the bucket.")
+            + " empty to show every sensor in the bucket. The outside reading"
+            + " comes from another measurement in the same bucket, written as"
+            + " measurement|tag=value|field; leave it empty to hide the row.")
     }
 }

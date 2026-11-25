@@ -58,6 +58,60 @@ function parseSensorList(raw) {
     return {names: names, labels: labels};
 }
 
+/**
+ * Parses the Outside temperature setting. The form is
+ * "measurement|tag=value|field" or "measurement|field" without a tag. Returns
+ * null when the setting is empty or malformed, which hides the outside row
+ * instead of sending a broken query. The tag key becomes part of the Flux
+ * expression, so it is limited to an identifier.
+ */
+function parseOutsideSource(raw) {
+    var text = String(raw === null || raw === undefined ? "" : raw).trim();
+
+    if (text.length === 0) {
+        return null;
+    }
+
+    var parts = text.split("|");
+
+    if (parts.length < 2 || parts.length > 3) {
+        return null;
+    }
+
+    var measurement = parts[0].trim();
+    var field = parts[parts.length - 1].trim();
+    var tag = parts.length === 3 ? parts[1].trim() : "";
+    var tagKey = "";
+    var tagValue = "";
+
+    if (measurement.length === 0 || field.length === 0) {
+        return null;
+    }
+
+    if (tag.length > 0) {
+        var eq = tag.indexOf("=");
+
+        if (eq <= 0) {
+            return null;
+        }
+
+        tagKey = tag.substring(0, eq).trim();
+        tagValue = tag.substring(eq + 1).trim();
+
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tagKey)
+                || tagValue.length === 0) {
+            return null;
+        }
+    }
+
+    return {
+        "measurement": measurement,
+        "tagKey": tagKey,
+        "tagValue": tagValue,
+        "field": field
+    };
+}
+
 /** Escapes a value for use inside a double-quoted Flux string. */
 function escapeFlux(value) {
     return String(value === null || value === undefined ? "" : value)
@@ -96,20 +150,58 @@ function buildFlux(bucket, measurement, names) {
     return lines.join("\n");
 }
 
+/** Flux that returns the newest point of the outside-temperature field. */
+function buildOutsideFlux(bucket, source) {
+    var conditions = [
+        "r._measurement == \"" + escapeFlux(source.measurement) + "\""
+    ];
+
+    if (source.tagKey.length > 0) {
+        conditions.push("r." + source.tagKey + " == \""
+            + escapeFlux(source.tagValue) + "\"");
+    }
+
+    var lines = [
+        "from(bucket: \"" + escapeFlux(bucket) + "\")",
+        "  |> range(start: -24h)",
+        "  |> filter(fn: (r) => " + conditions.join(" and ") + ")",
+        "  |> filter(fn: (r) => r._field == \""
+            + escapeFlux(source.field) + "\")",
+        "  |> sort(columns: [\"_time\"])",
+        "  |> tail(n: 1)",
+        "  |> keep(columns: [\"_time\", \"_value\"])"
+    ];
+
+    return lines.join("\n");
+}
+
 /** Body for Grafana's /api/ds/query endpoint. */
 function queryBody(options) {
-    return {
-        "queries": [{
-            "refId": "A",
-            "datasource": {
-                "type": "influxdb",
-                "uid": options.datasourceUid
-            },
-            "query": buildFlux(options.bucket, options.measurement,
-                options.names || []),
+    var datasource = {
+        "type": "influxdb",
+        "uid": options.datasourceUid
+    };
+    var queries = [{
+        "refId": "A",
+        "datasource": datasource,
+        "query": buildFlux(options.bucket, options.measurement,
+            options.names || []),
+        "rawQuery": true,
+        "resultFormat": "time_series"
+    }];
+
+    if (options.outside) {
+        queries.push({
+            "refId": "B",
+            "datasource": datasource,
+            "query": buildOutsideFlux(options.bucket, options.outside),
             "rawQuery": true,
             "resultFormat": "time_series"
-        }],
+        });
+    }
+
+    return {
+        "queries": queries,
         "from": "now-24h",
         "to": "now",
         "intervalMs": 60000,
@@ -230,7 +322,7 @@ function buildCurlCommand(options) {
  * curl's -w adds the HTTP status, the peer it actually talked to and the
  * response content type as the last line of stdout.
  */
-function parseCurlOutput(data, configuredNames, url) {
+function parseCurlOutput(data, configuredNames, url, outsideConfigured) {
     var stdout = String(data && data.stdout !== undefined ? data.stdout : "");
     var stderr = String(data && data.stderr !== undefined ? data.stderr : "")
         .trim();
@@ -247,7 +339,12 @@ function parseCurlOutput(data, configuredNames, url) {
             message += " " + stderr;
         }
 
-        return {error: message, rows: [], status: 0};
+        return {
+            "error": message,
+            "rows": [],
+            "status": 0,
+            "outside": outsideConfigured ? missingOutside() : null
+        };
     }
 
     var remote = match && match[2]
@@ -258,7 +355,8 @@ function parseCurlOutput(data, configuredNames, url) {
         "remote": remote,
         "url": url || ""
     };
-    var result = parseResponse(status, body, configuredNames, context);
+    var result = parseResponse(status, body, configuredNames, context,
+        outsideConfigured);
 
     result.status = status;
 
@@ -365,10 +463,19 @@ function httpError(status, payload, text, context) {
  * Converts a /api/ds/query response into widget rows, in the order the
  * sensors are configured. A configured sensor without a recent point is kept
  * as a "missing" row so the widget does not silently hide a dead sensor.
+ * When `outsideConfigured` is set, the same is done for the outside reading
+ * returned by query B; `outside` is null when no outside source is configured.
  */
-function parseResponse(status, text, configuredNames, context) {
+function parseResponse(status, text, configuredNames, context,
+        outsideConfigured) {
+    var noOutside = outsideConfigured ? missingOutside() : null;
+
     if (status === 0) {
-        return {error: "Could not reach Grafana.", rows: []};
+        return {
+            "error": "Could not reach Grafana.",
+            "rows": [],
+            "outside": noOutside
+        };
     }
 
     if (status !== 200) {
@@ -379,7 +486,11 @@ function parseResponse(status, text, configuredNames, context) {
         } catch (e) {
         }
 
-        return {error: httpError(status, failure, text, context), rows: []};
+        return {
+            "error": httpError(status, failure, text, context),
+            "rows": [],
+            "outside": noOutside
+        };
     }
 
     var payload;
@@ -387,21 +498,34 @@ function parseResponse(status, text, configuredNames, context) {
     try {
         payload = JSON.parse(text);
     } catch (e) {
-        return {error: "Grafana returned invalid JSON.", rows: []};
+        return {
+            "error": "Grafana returned invalid JSON.",
+            "rows": [],
+            "outside": noOutside
+        };
     }
 
+    var outside = outsideFromResults(payload, outsideConfigured);
     var result = payload && payload.results ? payload.results.A : null;
 
     if (!result) {
-        return {error: "Grafana returned no query results.", rows: []};
+        return {
+            "error": "Grafana returned no query results.",
+            "rows": [],
+            "outside": outside
+        };
     }
 
     if (result.error) {
-        return {error: String(result.error), rows: []};
+        return {"error": String(result.error), "rows": [], "outside": outside};
     }
 
     if (result.status && result.status !== 200) {
-        return {error: httpError(result.status, result, "", context), rows: []};
+        return {
+            "error": httpError(result.status, result, "", context),
+            "rows": [],
+            "outside": outside
+        };
     }
 
     var frames = result.frames || [];
@@ -437,7 +561,88 @@ function parseResponse(status, text, configuredNames, context) {
         }
     }
 
-    return {error: "", rows: rows};
+    return {"error": "", "rows": rows, "outside": outside};
+}
+
+/**
+ * Reads query B's single frame. A failed or empty outside query leaves the
+ * sensor rows intact and shows the outside row as "no data".
+ */
+function outsideFromResults(payload, configured) {
+    if (!configured) {
+        return null;
+    }
+
+    var result = payload && payload.results ? payload.results.B : null;
+    var frames = result && !result.error ? result.frames || [] : [];
+    var reading = null;
+
+    for (var i = 0; i < frames.length && !reading; i++) {
+        reading = outsideFromFrame(frames[i]);
+    }
+
+    return reading || missingOutside();
+}
+
+function outsideFromFrame(frame) {
+    var schema = frame && frame.schema;
+    var data = frame && frame.data;
+
+    if (!schema || !data || !schema.fields || !data.values) {
+        return null;
+    }
+
+    var fields = schema.fields;
+    var columns = data.values;
+    var timeIndex = -1;
+    var valueIndex = -1;
+
+    for (var i = 0; i < fields.length; i++) {
+        var key = String((fields[i] || {}).name || "").toLowerCase();
+
+        if (timeIndex < 0 && (key === "time" || key === "_time")) {
+            timeIndex = i;
+        } else if (valueIndex < 0
+                && (key === "_value" || key === "value")) {
+            valueIndex = i;
+        }
+    }
+
+    // Grafana sometimes names the column after the Flux field instead of
+    // "_value"; accept any other numeric column when the usual names are gone.
+    if (valueIndex < 0) {
+        for (var j = 0; j < fields.length; j++) {
+            if (j !== timeIndex && numberOrNull(columns, j) !== null) {
+                valueIndex = j;
+                break;
+            }
+        }
+    }
+
+    if (valueIndex < 0) {
+        return null;
+    }
+
+    var temperature = numberOrNull(columns, valueIndex);
+
+    if (temperature === null) {
+        return null;
+    }
+
+    return {
+        "temperature": temperature,
+        "timestamp": timeIndex < 0
+            ? 0 : toMillis(lastValue(columns[timeIndex])),
+        "missing": false
+    };
+}
+
+function missingOutside() {
+    return {
+        "temperature": null,
+        "timestamp": 0,
+        "missing": true
+    };
 }
 
 function rowFromFrame(frame) {

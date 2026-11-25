@@ -17,6 +17,7 @@ Item {
             + "grafanaUrl=http://grafana:3000\n"
             + "dashboardUrl=http://grafana:3000/d/abc/home\n"
             + "apiToken=tok\n"
+            + "outside=ibc_boiler|boiler=SL10-85G3|outdoor_c\n"
             + "bypassProxy=false\n"
             + "refreshSeconds=120\n"
             + "sensorLabels=House,Garage\n"
@@ -31,6 +32,9 @@ Item {
             === "http://grafana:3000/d/abc/home",
             "dashboard url is parsed");
         check(parsed.values.apiToken === "tok", "token is parsed");
+        check(parsed.values.outside
+            === "ibc_boiler|boiler=SL10-85G3|outdoor_c",
+            "outside source is parsed");
         check(parsed.values.grafanaUrl !== "http://attacker.invalid",
             "output after the marker is ignored");
         check(parsed.values.sensorLabels === undefined,
@@ -78,6 +82,7 @@ Item {
             "dashboardUrl": "http://grafana:3000/d/abc/home",
             "apiToken": "a'b",
             "sensors": "GVH5075_B6D2=House,GVH5075_E22C=Garage",
+            "outside": "ibc_boiler|boiler=SL10-85G3|outdoor_c",
             "refreshSeconds": 120,
             "bypassProxy": false
         });
@@ -96,6 +101,9 @@ Item {
         check(write.indexOf(
             "sensors=GVH5075_B6D2=House,GVH5075_E22C=Garage") >= 0,
             "write preserves inline sensor labels");
+        check(write.indexOf(
+            "outside=ibc_boiler|boiler=SL10-85G3|outdoor_c") >= 0,
+            "write stores the outside source");
         check(write.indexOf("a'\\''b") >= 0, "write shell-quotes values");
 
         if (failures === 0) {

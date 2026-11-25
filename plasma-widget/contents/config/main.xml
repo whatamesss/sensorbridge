@@ -26,6 +26,9 @@
     <entry name="sensors" type="String">
       <default>GVH5075_B6D2,GVH5075_E22C</default>
     </entry>
+    <entry name="outside" type="String">
+      <default>ibc_boiler|boiler=SL10-85G3|outdoor_c</default>
+    </entry>
     <entry name="refreshSeconds" type="Int">
       <default>60</default>
     </entry>
