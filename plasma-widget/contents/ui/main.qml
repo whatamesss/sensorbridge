@@ -644,6 +644,7 @@ PlasmoidItem {
         property string label: ""
         property color valueColor: Kirigami.Theme.textColor
         property int valueAlignment: Qt.AlignLeft
+        property int labelAlignment: Qt.AlignLeft
 
         spacing: 0
 
@@ -660,6 +661,7 @@ PlasmoidItem {
             text: metric.label
             color: Kirigami.Theme.disabledTextColor
             font: Kirigami.Theme.smallFont
+            horizontalAlignment: metric.labelAlignment
             Layout.fillWidth: true
         }
     }
@@ -753,6 +755,7 @@ PlasmoidItem {
                             ? root.sideText("errors") : ""
                         valueColor: root.sideValueColor("errors")
                         valueAlignment: Qt.AlignRight
+                        labelAlignment: Qt.AlignRight
                         label: root.sideReading("errors") !== null
                             ? i18n("Errors") : ""
                     }
@@ -764,6 +767,7 @@ PlasmoidItem {
                             ? root.sideText("jf") : ""
                         valueColor: root.sideValueColor("jf")
                         valueAlignment: Qt.AlignRight
+                        labelAlignment: Qt.AlignRight
                         label: root.sideReading("jf") !== null
                             ? i18n("Connects") : ""
                     }
