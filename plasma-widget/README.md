@@ -97,7 +97,7 @@ survives a restart even if the applet is removed and re-added:
 | Datasource UID | `influxdb` | UID from the datasource settings page |
 | InfluxDB bucket | `sensors` | Bucket fed by Telegraf |
 | Measurement | `mqtt_consumer` | Measurement written by Telegraf |
-| Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; append `=Label` to override the display label; empty shows all |
+| Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; append `=Label` to show only that name; empty shows all |
 | Outside temperature | `ibc_boiler\|boiler=SL10-85G3\|outdoor_c` | `measurement\|tag=value\|field` in the same bucket; empty hides the reading |
 | High-mass heating | `ibc_boiler\|boiler=SL10-85G3\|load2_btu` | BTU/h field, shown as kBtu/h; red when non-zero; empty hides it |
 | Boiler errors | `ibc_boiler\|boiler=SL10-85G3\|active_errors` | Count of active controller errors, as on the ibc-boiler dashboard; red when non-zero; empty hides it |
@@ -214,10 +214,10 @@ sensors; the affected reading simply shows **no data**.
 
 Known sensor suffixes get a friendly room label by default:
 `GVH5075_B6D2 (House)` and `GVH5075_E22C (Garage)`. Append `=Label` in
-**Sensor names** to override the label:
-`GVH5075_B6D2=Living room, GVH5075_E22C=Shed`. The label is display-only; the
-Flux query uses only the part before `=`, so a label never becomes a sensor
-name that matches nothing in InfluxDB.
+**Sensor names** to show only that name instead:
+`GVH5075_B6D2=Living room, GVH5075_E22C=Shed` displays **Living room** and
+**Shed**. The label is display-only; the Flux query uses only the part before
+`=`, so a label never becomes a sensor name that matches nothing in InfluxDB.
 
 The widget parses Grafana's data frames tolerantly: it accepts the sensor name
 from field labels or from a `name` column, and merges frames if the datasource

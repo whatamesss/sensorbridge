@@ -139,7 +139,7 @@ Kirigami.FormLayout {
         text: i18n("Create the token under Administration → Users and access"
             + " → Service accounts with the Viewer role. Settings are saved"
             + " to ~/.config/sensorbridge in plain text. Append =Label to a"
-            + " sensor name to change its display label. Leave the sensor list"
+            + " sensor name to show only that name. Leave the sensor list"
             + " empty to show every sensor in the bucket. The extra readings"
             + " come from other measurements in the same bucket, written as"
             + " measurement|tag=value|field; leave one empty to hide it. Boiler"
