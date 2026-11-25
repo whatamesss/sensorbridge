@@ -76,6 +76,10 @@ PlasmoidItem {
             return cfg.jfConnections;
         }
 
+        if (key === "boilerErrors") {
+            return cfg.boilerErrors;
+        }
+
         if (key === "refreshSeconds") {
             return cfg.refreshSeconds;
         }
@@ -135,7 +139,7 @@ PlasmoidItem {
         var cfg = Plasmoid.configuration;
         var keys = ["grafanaUrl", "dashboardUrl", "apiToken", "datasourceUid",
             "bucket", "measurement", "sensors", "outside", "boilerHeat",
-            "jfConnections", "refreshSeconds", "bypassProxy"];
+            "jfConnections", "boilerErrors", "refreshSeconds", "bypassProxy"];
 
         for (var i = 0; i < keys.length; i++) {
             if (Object.prototype.hasOwnProperty.call(values, keys[i])) {
@@ -255,7 +259,8 @@ PlasmoidItem {
         return {
             "outside": Grafana.parseSideSource(configValue("outside")),
             "heat": Grafana.parseSideSource(configValue("boilerHeat")),
-            "jf": Grafana.parseSideSource(configValue("jfConnections"))
+            "jf": Grafana.parseSideSource(configValue("jfConnections")),
+            "errors": Grafana.parseSideSource(configValue("boilerErrors"))
         };
     }
 
@@ -269,10 +274,11 @@ PlasmoidItem {
     function hasSides() {
         return root.sideReading("outside") !== null
             || root.sideReading("heat") !== null
-            || root.sideReading("jf") !== null;
+            || root.sideReading("jf") !== null
+            || root.sideReading("errors") !== null;
     }
 
-    /** Red for active boiler heat, green for active Jellyfin connections. */
+    /** Red for active boiler heat/errors, green for Jellyfin connections. */
     function sideValueColor(key) {
         var reading = root.sideReading(key);
 
@@ -286,6 +292,10 @@ PlasmoidItem {
 
         if (key === "jf" && Number(reading.value) !== 0) {
             return Kirigami.Theme.positiveTextColor;
+        }
+
+        if (key === "errors" && Number(reading.value) !== 0) {
+            return Kirigami.Theme.negativeTextColor;
         }
 
         return Kirigami.Theme.textColor;
@@ -536,6 +546,10 @@ PlasmoidItem {
             root.applyConfigChange("jfConnections");
         }
 
+        function onBoilerErrorsChanged() {
+            root.applyConfigChange("boilerErrors");
+        }
+
         function onBypassProxyChanged() {
             root.applyConfigChange("bypassProxy");
         }
@@ -596,7 +610,6 @@ PlasmoidItem {
         property string value: "–"
         property string label: ""
         property color valueColor: Kirigami.Theme.textColor
-        property int textAlignment: Qt.AlignLeft
 
         spacing: 0
 
@@ -605,7 +618,7 @@ PlasmoidItem {
             color: metric.valueColor
             font.bold: true
             font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.25
-            horizontalAlignment: metric.textAlignment
+            elide: Text.ElideRight
             Layout.fillWidth: true
         }
 
@@ -613,7 +626,7 @@ PlasmoidItem {
             text: metric.label
             color: Kirigami.Theme.disabledTextColor
             font: Kirigami.Theme.smallFont
-            horizontalAlignment: metric.textAlignment
+            elide: Text.ElideRight
             Layout.fillWidth: true
         }
     }
@@ -684,6 +697,8 @@ PlasmoidItem {
                     Metric {
                         visible: root.sideReading("outside") !== null
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 0
                         value: Grafana.formatTemperature(
                             root.sideReading("outside")
                                 ? root.sideReading("outside").value : null)
@@ -693,23 +708,37 @@ PlasmoidItem {
                     Metric {
                         visible: root.sideReading("heat") !== null
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 0
                         value: Grafana.formatKbtu(
                             root.sideReading("heat")
                                 ? root.sideReading("heat").value : null)
                         valueColor: root.sideValueColor("heat")
-                        textAlignment: Qt.AlignHCenter
-                        label: i18n("High Mass heat")
+                        label: i18n("High mass")
+                    }
+
+                    Metric {
+                        visible: root.sideReading("errors") !== null
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 0
+                        value: Grafana.formatCount(
+                            root.sideReading("errors")
+                                ? root.sideReading("errors").value : null)
+                        valueColor: root.sideValueColor("errors")
+                        label: i18n("Errors")
                     }
 
                     Metric {
                         visible: root.sideReading("jf") !== null
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: 0
                         value: Grafana.formatCount(
                             root.sideReading("jf")
                                 ? root.sideReading("jf").value : null)
                         valueColor: root.sideValueColor("jf")
-                        textAlignment: Qt.AlignRight
-                        label: i18n("JF Connections")
+                        label: i18n("Connections")
                     }
                 }
             }

@@ -16,21 +16,22 @@ Kirigami.FormLayout {
     property alias cfg_outside: outsideField.text
     property alias cfg_boilerHeat: boilerHeatField.text
     property alias cfg_jfConnections: jfConnectionsField.text
+    property alias cfg_boilerErrors: boilerErrorsField.text
     property alias cfg_refreshSeconds: refreshSpin.value
     property alias cfg_bypassProxy: proxyCheck.checked
 
     // Plasma gives the applet configuration dialog a fixed height hint and
     // does not grow it to this page's implicitHeight, so the last note is
     // clipped. Nudge the window itself; a spacer or a larger implicitHeight
-    // would only add a scrollable line inside the dialog. The two extra columns
-    // for the source settings need room too.
+    // would only add a scrollable line inside the dialog. The extra source
+    // settings need room too.
     Component.onCompleted: {
         if (typeof configDialog === "undefined" || !configDialog) {
             return;
         }
 
         Qt.callLater(function () {
-            configDialog.height += Kirigami.Units.gridUnit * 6;
+            configDialog.height += Kirigami.Units.gridUnit * 8;
         });
     }
 
@@ -112,6 +113,12 @@ Kirigami.FormLayout {
         placeholderText: i18n("measurement|tag=value|field — empty hides it")
     }
 
+    QQC2.TextField {
+        id: boilerErrorsField
+        Kirigami.FormData.label: i18n("Boiler errors:")
+        placeholderText: i18n("measurement|tag=value|field — empty hides it")
+    }
+
     QQC2.SpinBox {
         id: refreshSpin
         Kirigami.FormData.label: i18n("Refresh interval:")
@@ -136,6 +143,7 @@ Kirigami.FormLayout {
             + " empty to show every sensor in the bucket. The extra readings"
             + " come from other measurements in the same bucket, written as"
             + " measurement|tag=value|field; leave one empty to hide it. Boiler"
-            + " heat is load2_btu (BTU/h), shown as kBtu/h.")
+            + " heat is load2_btu (BTU/h), shown as kBtu/h; errors is"
+            + " active_errors, red when non-zero.")
     }
 }

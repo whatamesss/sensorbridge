@@ -41,7 +41,8 @@ Item {
         });
     }
 
-    function responseWithB(frames, outsideFrames, heatFrames, jfFrames) {
+    function responseWithB(frames, outsideFrames, heatFrames, jfFrames,
+            errorsFrames) {
         return JSON.stringify({
             "results": {
                 "A": {
@@ -59,6 +60,10 @@ Item {
                 "D": {
                     "status": 200,
                     "frames": jfFrames || []
+                },
+                "E": {
+                    "status": 200,
+                    "frames": errorsFrames || []
                 }
             }
         });
@@ -227,6 +232,8 @@ Item {
             "ibc_boiler|boiler=SL10-85G3|load2_btu");
         var jf = Grafana.parseSideSource(
             "jellyfin_connections|service=jellyfin|value");
+        var errors = Grafana.parseSideSource(
+            "ibc_boiler|boiler=SL10-85G3|active_errors");
         check(outside !== null, "outside source is parsed");
         check(outside.measurement === "ibc_boiler",
             "outside measurement is parsed");
@@ -237,6 +244,9 @@ Item {
             "high-mass heat source is parsed");
         check(jf !== null && jf.measurement === "jellyfin_connections"
             && jf.field === "value", "Jellyfin source is parsed");
+        check(errors !== null && errors.field === "active_errors"
+            && errors.tagValue === "SL10-85G3",
+            "boiler error source is parsed");
 
         var outsideNoTag = Grafana.parseSideSource("weather|temp_c");
         check(outsideNoTag !== null && outsideNoTag.tagKey === "",
@@ -261,7 +271,8 @@ Item {
         var sideSources = {
             "outside": outside,
             "heat": heat,
-            "jf": jf
+            "jf": jf,
+            "errors": errors
         };
         var outsideBody = Grafana.queryBody({
             "datasourceUid": "influxdb",
@@ -270,12 +281,13 @@ Item {
             "names": ["A"],
             "sides": sideSources
         });
-        check(outsideBody.queries.length === 4,
-            "three extra sources add three queries");
+        check(outsideBody.queries.length === 5,
+            "four extra sources add four queries");
         check(outsideBody.queries[1].refId === "B"
             && outsideBody.queries[2].refId === "C"
-            && outsideBody.queries[3].refId === "D",
-            "extra queries use refIds B, C and D");
+            && outsideBody.queries[3].refId === "D"
+            && outsideBody.queries[4].refId === "E",
+            "extra queries use refIds B, C, D and E");
         check(outsideBody.queries[1].query
             .indexOf('r._measurement == "ibc_boiler"') >= 0,
             "outside query is sent");
@@ -285,6 +297,9 @@ Item {
         check(outsideBody.queries[3].query
             .indexOf('r._measurement == "jellyfin_connections"') >= 0,
             "Jellyfin query is sent");
+        check(outsideBody.queries[4].query
+            .indexOf('r._field == "active_errors"') >= 0,
+            "boiler error query is sent");
 
         var withSides = Grafana.parseResponse(200, responseWithB([], [
             outsideFrame("_value", 3.25, now)
@@ -292,6 +307,8 @@ Item {
             outsideFrame("_value", 45000, now - 1000)
         ], [
             outsideFrame("_value", 3, now - 2000)
+        ], [
+            outsideFrame("_value", 2, now - 3000)
         ]), [], null, sideSources);
         check(withSides.sides.outside !== null, "outside reading is parsed");
         check(withSides.sides.outside.value === 3.25,
@@ -303,6 +320,8 @@ Item {
             "high-mass heat is parsed");
         check(withSides.sides.jf.value === 3,
             "Jellyfin connections are parsed");
+        check(withSides.sides.errors.value === 2,
+            "boiler errors are parsed");
 
         var outsideNamed = Grafana.parseResponse(200, responseWithB([], [
             outsideFrame("outdoor_c", -4.5, now - 5000)
@@ -314,6 +333,13 @@ Item {
             [], null, {"outside": outside});
         check(outsideEmpty.sides.outside.missing,
             "missing outside point is flagged");
+
+        var errorsEmpty = Grafana.parseResponse(200,
+            responseWithB([], [], [], [], []), [], null, {"errors": errors});
+        check(errorsEmpty.sides.errors.missing,
+            "missing boiler error point is flagged");
+        check(errorsEmpty.sides.outside === null,
+            "disabled readings stay hidden");
 
         var outsideFailed = Grafana.parseResponse(200, JSON.stringify({
             "results": {

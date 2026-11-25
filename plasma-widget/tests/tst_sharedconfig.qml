@@ -20,6 +20,7 @@ Item {
             + "outside=ibc_boiler|boiler=SL10-85G3|outdoor_c\n"
             + "boilerHeat=ibc_boiler|boiler=SL10-85G3|load2_btu\n"
             + "jfConnections=jellyfin_connections|service=jellyfin|value\n"
+            + "boilerErrors=ibc_boiler|boiler=SL10-85G3|active_errors\n"
             + "bypassProxy=false\n"
             + "refreshSeconds=120\n"
             + "sensorLabels=House,Garage\n"
@@ -43,6 +44,9 @@ Item {
         check(parsed.values.jfConnections
             === "jellyfin_connections|service=jellyfin|value",
             "Jellyfin source is parsed");
+        check(parsed.values.boilerErrors
+            === "ibc_boiler|boiler=SL10-85G3|active_errors",
+            "boiler error source is parsed");
         check(parsed.values.grafanaUrl !== "http://attacker.invalid",
             "output after the marker is ignored");
         check(parsed.values.sensorLabels === undefined,
@@ -93,6 +97,7 @@ Item {
             "outside": "ibc_boiler|boiler=SL10-85G3|outdoor_c",
             "boilerHeat": "ibc_boiler|boiler=SL10-85G3|load2_btu",
             "jfConnections": "jellyfin_connections|service=jellyfin|value",
+            "boilerErrors": "ibc_boiler|boiler=SL10-85G3|active_errors",
             "refreshSeconds": 120,
             "bypassProxy": false
         });
@@ -120,6 +125,9 @@ Item {
         check(write.indexOf(
             "jfConnections=jellyfin_connections|service=jellyfin|value") >= 0,
             "write stores the Jellyfin source");
+        check(write.indexOf(
+            "boilerErrors=ibc_boiler|boiler=SL10-85G3|active_errors") >= 0,
+            "write stores the boiler error source");
         check(write.indexOf("a'\\''b") >= 0, "write shell-quotes values");
 
         if (failures === 0) {

@@ -3,8 +3,8 @@
 A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
 row per sensor, with temperature, humidity, dew point, battery and the age of
 the reading, plus optional single-value readings (outside temperature,
-high-mass boiler heat and Jellyfin connections) fed by other measurements in
-the same InfluxDB bucket.
+high-mass boiler heat, boiler errors and Jellyfin connections) fed by other
+measurements in the same InfluxDB bucket.
 
 ![SensorBridge widget showing two sensors](../docs/screenshots/plasma-widget.png)
 
@@ -100,6 +100,7 @@ survives a restart even if the applet is removed and re-added:
 | Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; append `=Label` to override the display label; empty shows all |
 | Outside temperature | `ibc_boiler\|boiler=SL10-85G3\|outdoor_c` | `measurement\|tag=value\|field` in the same bucket; empty hides the reading |
 | High-mass heating | `ibc_boiler\|boiler=SL10-85G3\|load2_btu` | BTU/h field, shown as kBtu/h; red when non-zero; empty hides it |
+| Boiler errors | `ibc_boiler\|boiler=SL10-85G3\|active_errors` | Count of active controller errors, as on the ibc-boiler dashboard; red when non-zero; empty hides it |
 | Jellyfin connections | `jellyfin_connections\|service=jellyfin\|value` | Connection count; green when non-zero; empty hides it |
 | Refresh interval | 60 s | Minimum 10 s |
 | Bypass system proxy | on | Turn off to let `curl` use the session's proxy settings |
@@ -142,6 +143,7 @@ sensors=GVH5075_B6D2=House,GVH5075_E22C=Garage
 outside=ibc_boiler|boiler=SL10-85G3|outdoor_c
 boilerHeat=ibc_boiler|boiler=SL10-85G3|load2_btu
 jfConnections=jellyfin_connections|service=jellyfin|value
+boilerErrors=ibc_boiler|boiler=SL10-85G3|active_errors
 refreshSeconds=60
 bypassProxy=true
 ```

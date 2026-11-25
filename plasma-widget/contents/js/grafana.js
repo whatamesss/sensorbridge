@@ -3,9 +3,11 @@
 var FIELDS = ["temperature", "humidity", "battery"];
 
 // Extra single-value readings shown above the sensors. Each has its own
-// configurable source; the order here is also the query refId order (B, C, D).
-var SIDE_KEYS = ["outside", "heat", "jf"];
-var SIDE_REFIDS = {"outside": "B", "heat": "C", "jf": "D"};
+// configurable source; the order here is also the query refId order (B-E).
+var SIDE_KEYS = ["outside", "heat", "jf", "errors"];
+var SIDE_REFIDS = {
+    "outside": "B", "heat": "C", "jf": "D", "errors": "E"
+};
 
 // Friendly room names for the two sensors in the usual setup. Matching is on
 // the trailing four characters, so the label survives a changed name prefix.
@@ -477,7 +479,7 @@ function httpError(status, payload, text, context) {
  * sensors are configured. A configured sensor without a recent point is kept
  * as a "missing" row so the widget does not silently hide a dead sensor.
  * `sides` maps each configured extra reading to its parsed source; the same
- * "missing" treatment applies to the readings returned by queries B, C and D.
+ * "missing" treatment applies to the readings returned by queries B through E.
  */
 function parseResponse(status, text, configuredNames, context, sides) {
     var noSides = missingSides(sides);

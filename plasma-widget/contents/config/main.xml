@@ -35,6 +35,9 @@
     <entry name="jfConnections" type="String">
       <default>jellyfin_connections|service=jellyfin|value</default>
     </entry>
+    <entry name="boilerErrors" type="String">
+      <default>ibc_boiler|boiler=SL10-85G3|active_errors</default>
+    </entry>
     <entry name="refreshSeconds" type="Int">
       <default>60</default>
     </entry>

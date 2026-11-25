@@ -6,7 +6,7 @@
       }
     ],
     "Category": "Environment and Weather",
-    "Description": "Govee readings plus outside temperature, boiler heat and Jellyfin connections from Grafana",
+    "Description": "Govee readings plus outside temperature, boiler heat, boiler errors and Jellyfin connections from Grafana",
     "Icon": "weather-temperature",
     "Id": "com.whatamesss.sensorbridge",
     "License": "GPL-2.0-or-later",
