@@ -12,6 +12,7 @@ PlasmoidItem {
 
     property var readings: []
     property var sides: null
+    property var sensorColumnWidths: []
     property string pendingCommand: ""
     property var pendingNames: []
     property var pendingSides: null
@@ -321,61 +322,16 @@ PlasmoidItem {
     }
 
     /**
-     * Flattened cells for the reading grid: four side readings, then a
-     * separator and each sensor's header plus its four values. Every row uses
-     * the same four columns, so the side readings line up with the sensor
-     * values below them. A configured-off side reading becomes an empty cell
-     * so the remaining ones keep their column.
+     * Width of one sensor value column, measured from the first sensor row.
+     * The side readings use these widths so their values sit exactly above
+     * the sensor values. Falls back to the item's own width when no sensor
+     * row has been laid out yet.
      */
-    property var gridCells: {
-        var cells = [];
-        var sideKeys = ["outside", "heat", "errors", "jf"];
-        var sideLabels = [i18n("Outside"), i18n("High mass"),
-            i18n("Errors"), i18n("Connects")];
+    function sideColumnWidth(index, fallback) {
+        var widths = root.sensorColumnWidths;
 
-        if (root.hasSides()) {
-            for (var c = 0; c < 4; c++) {
-                var reading = root.sideReading(sideKeys[c]);
-
-                cells.push({
-                    "kind": reading ? "side" : "gap",
-                    "key": sideKeys[c],
-                    "text": reading ? root.sideText(sideKeys[c]) : "",
-                    "label": reading ? sideLabels[c] : ""
-                });
-            }
-
-            if (root.readings.length > 0) {
-                cells.push({"kind": "separator"});
-            }
-        }
-
-        var valueLabels = [i18n("Temperature"), i18n("Humidity"),
-            i18n("Dew point"), i18n("Battery")];
-
-        for (var i = 0; i < root.readings.length; i++) {
-            var row = root.readings[i];
-            var texts = [
-                Grafana.formatTemperature(row.temperature),
-                Grafana.formatHumidity(row.humidity),
-                Grafana.formatTemperature(Grafana.dewPoint(
-                    row.temperature, row.humidity)),
-                Grafana.formatBattery(row.battery)
-            ];
-
-            cells.push({"kind": "header", "index": i, "row": row});
-
-            for (var j = 0; j < 4; j++) {
-                cells.push({
-                    "kind": "sensor",
-                    "row": row,
-                    "text": texts[j],
-                    "label": valueLabels[j]
-                });
-            }
-        }
-
-        return cells;
+        return widths && widths.length > index && widths[index] > 0
+            ? widths[index] : fallback;
     }
 
     /**
@@ -695,7 +651,6 @@ PlasmoidItem {
             color: metric.valueColor
             font.bold: true
             font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.25
-            elide: Text.ElideRight
             Layout.fillWidth: true
         }
 
@@ -703,7 +658,6 @@ PlasmoidItem {
             text: metric.label
             color: Kirigami.Theme.disabledTextColor
             font: Kirigami.Theme.smallFont
-            elide: Text.ElideRight
             Layout.fillWidth: true
         }
     }
@@ -762,96 +716,160 @@ PlasmoidItem {
                 Layout.fillWidth: true
             }
 
-            GridLayout {
+            ColumnLayout {
+                visible: root.hasSides()
                 Layout.fillWidth: true
-                columns: 4
-                columnSpacing: Kirigami.Units.largeSpacing
-                rowSpacing: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
 
-                Repeater {
-                    model: root.gridCells
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
 
-                    delegate: Item {
-                        id: cell
+                    Metric {
+                        Layout.preferredWidth: root.sideColumnWidth(
+                            0, implicitWidth)
+                        value: root.sideReading("outside") !== null
+                            ? root.sideText("outside") : ""
+                        label: root.sideReading("outside") !== null
+                            ? i18n("Outside") : ""
+                    }
 
-                        readonly property bool isHeader:
-                            modelData.kind === "header"
-                        readonly property bool isSeparator:
-                            modelData.kind === "separator"
-                        readonly property bool isValue:
-                            modelData.kind === "side"
-                            || modelData.kind === "sensor"
+                    Metric {
+                        Layout.preferredWidth: root.sideColumnWidth(
+                            1, implicitWidth)
+                        value: root.sideReading("heat") !== null
+                            ? root.sideText("heat") : ""
+                        valueColor: root.sideValueColor("heat")
+                        label: root.sideReading("heat") !== null
+                            ? i18n("High mass") : ""
+                    }
 
-                        Layout.columnSpan: (isHeader || isSeparator) ? 4 : 1
+                    Metric {
+                        Layout.preferredWidth: root.sideColumnWidth(
+                            2, implicitWidth)
+                        value: root.sideReading("errors") !== null
+                            ? root.sideText("errors") : ""
+                        valueColor: root.sideValueColor("errors")
+                        label: root.sideReading("errors") !== null
+                            ? i18n("Errors") : ""
+                    }
+
+                    Metric {
+                        Layout.preferredWidth: root.sideColumnWidth(
+                            3, implicitWidth)
+                        value: root.sideReading("jf") !== null
+                            ? root.sideText("jf") : ""
+                        valueColor: root.sideValueColor("jf")
+                        label: root.sideReading("jf") !== null
+                            ? i18n("Connects") : ""
+                    }
+
+                    Item {
                         Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        implicitWidth: isValue ? metric.implicitWidth : 0
-                        implicitHeight: isHeader
-                            ? header.implicitHeight
-                            : isSeparator ? 1
-                            : isValue ? metric.implicitHeight : 0
+                    }
+                }
+            }
 
-                        ColumnLayout {
-                            id: header
-                            visible: cell.isHeader
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            spacing: Kirigami.Units.smallSpacing
+            Rectangle {
+                visible: root.hasSides() && root.readings.length > 0
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: Kirigami.Theme.textColor
+                opacity: 0.15
+            }
 
-                            Rectangle {
-                                visible: cell.isHeader
-                                    && modelData.index > 0
-                                Layout.fillWidth: true
-                                implicitHeight: 1
-                                color: Kirigami.Theme.textColor
-                                opacity: 0.15
-                            }
+            Repeater {
+                model: root.readings
 
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
+                delegate: ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
 
-                                PlasmaComponents3.Label {
-                                    text: cell.isHeader
-                                        ? root.displaySensorName(
-                                            modelData.row.name) : ""
-                                    font.bold: true
-                                    elide: Text.ElideMiddle
-                                    Layout.fillWidth: true
-                                }
+                    // Widths of this row's four value columns, reported to the
+                    // side readings so both rows use the same column starts.
+                    property var columnWidths: [
+                        temperatureMetric.implicitWidth,
+                        humidityMetric.implicitWidth,
+                        dewMetric.implicitWidth,
+                        batteryMetric.implicitWidth
+                    ]
 
-                                PlasmaComponents3.Label {
-                                    text: cell.isHeader
-                                        ? (modelData.row.missing
-                                            ? i18n("no data")
-                                            : Grafana.formatAge(
-                                                modelData.row.timestamp,
-                                                root.nowMs))
-                                        : ""
-                                    color: Kirigami.Theme.disabledTextColor
-                                    font: Kirigami.Theme.smallFont
-                                }
-                            }
+                    onColumnWidthsChanged: {
+                        if (index === 0) {
+                            root.sensorColumnWidths = columnWidths;
+                        }
+                    }
+
+                    Component.onCompleted: {
+                        if (index === 0) {
+                            root.sensorColumnWidths = columnWidths;
+                        }
+                    }
+
+                    Rectangle {
+                        visible: index > 0
+                        Layout.fillWidth: true
+                        implicitHeight: 1
+                        color: Kirigami.Theme.textColor
+                        opacity: 0.15
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PlasmaComponents3.Label {
+                            text: root.displaySensorName(modelData.name)
+                            font.bold: true
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+                        }
+
+                        PlasmaComponents3.Label {
+                            text: modelData.missing
+                                ? i18n("no data")
+                                : Grafana.formatAge(
+                                    modelData.timestamp, root.nowMs)
+                            color: Kirigami.Theme.disabledTextColor
+                            font: Kirigami.Theme.smallFont
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.largeSpacing
+
+                        Metric {
+                            id: temperatureMetric
+                            value: Grafana.formatTemperature(
+                                modelData.temperature)
+                            label: i18n("Temperature")
                         }
 
                         Metric {
-                            id: metric
-                            visible: cell.isValue
-                            width: cell.width
-                            value: cell.isValue ? modelData.text : ""
-                            label: cell.isValue ? modelData.label : ""
-                            valueColor: modelData.kind === "side"
-                                ? root.sideValueColor(modelData.key)
-                                : Kirigami.Theme.textColor
+                            id: humidityMetric
+                            value: Grafana.formatHumidity(
+                                modelData.humidity)
+                            label: i18n("Humidity")
                         }
 
-                        Rectangle {
-                            visible: cell.isSeparator
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            implicitHeight: 1
-                            color: Kirigami.Theme.textColor
-                            opacity: 0.15
+                        Metric {
+                            id: dewMetric
+                            value: Grafana.formatTemperature(
+                                Grafana.dewPoint(modelData.temperature,
+                                    modelData.humidity))
+                            label: i18n("Dew point")
+                        }
+
+                        Metric {
+                            id: batteryMetric
+                            value: Grafana.formatBattery(
+                                modelData.battery)
+                            label: i18n("Battery")
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
                         }
                     }
                 }
