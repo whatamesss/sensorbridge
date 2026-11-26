@@ -104,7 +104,7 @@ Item {
         check(migrated[2].label === "Errors"
             && migrated[2].format === "count"
             && migrated[2].color === "negative"
-            && migrated[2].align === "right",
+            && migrated[2].align === undefined,
             "boiler errors keep their display settings");
 
         var read = SharedConfig.readCommand();

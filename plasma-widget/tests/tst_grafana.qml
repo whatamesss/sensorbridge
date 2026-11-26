@@ -69,13 +69,13 @@ Item {
     function sensorFields() {
         return Grafana.parseSensorFields(JSON.stringify([
             {"field": "temperature", "label": "Temperature",
-                "format": "temperature", "align": "left"},
+                "format": "temperature"},
             {"field": "humidity", "label": "Humidity",
-                "format": "humidity", "align": "left"},
+                "format": "humidity"},
             {"field": "dewPoint", "label": "Dew point",
-                "format": "temperature", "align": "right"},
+                "format": "temperature"},
             {"field": "battery", "label": "Battery",
-                "format": "battery", "align": "right"}
+                "format": "battery"}
         ]));
     }
 
@@ -83,16 +83,16 @@ Item {
         return Grafana.parseExtraReadings(JSON.stringify([
             {"label": "Outside", "source":
                 "ibc_boiler|boiler=SL10-85G3|outdoor_c",
-                "format": "temperature", "color": "none", "align": "left"},
+                "format": "temperature", "color": "none"},
             {"label": "High Mass Ht.", "source":
                 "ibc_boiler|boiler=SL10-85G3|load2_btu",
-                "format": "kbtu", "color": "negative", "align": "left"},
+                "format": "kbtu", "color": "negative"},
             {"label": "Errors", "source":
                 "ibc_boiler|boiler=SL10-85G3|active_errors",
-                "format": "count", "color": "negative", "align": "right"},
+                "format": "count", "color": "negative"},
             {"label": "Connects", "source":
                 "jellyfin_connections|service=jellyfin|value",
-                "format": "count", "color": "positive", "align": "right"}
+                "format": "count", "color": "positive"}
         ]));
     }
 
@@ -289,7 +289,8 @@ Item {
         check(sideList[0].label === "Outside", "extra label is parsed");
         check(sideList[0].format === "temperature", "extra format is parsed");
         check(sideList[1].color === "negative", "extra colour is parsed");
-        check(sideList[3].align === "right", "extra alignment is parsed");
+        check(sideList[3].align === undefined,
+            "alignment is no longer a stored setting");
         check(sideList[0].source.measurement === "ibc_boiler",
             "extra source is parsed");
         check(sideList[0].source.tagKey === "boiler",
@@ -330,6 +331,18 @@ Item {
         check(Grafana.parseSensorFields("not json").length === 0,
             "invalid field JSON is ignored");
 
+        var scrambled = Grafana.parseSensorFields(JSON.stringify([
+            {"field": "battery"},
+            {"field": "dewPoint"},
+            {"field": "humidity"},
+            {"field": "temperature"}
+        ]));
+        check(scrambled[0].field === "temperature"
+            && scrambled[1].field === "humidity"
+            && scrambled[2].field === "dewPoint"
+            && scrambled[3].field === "battery",
+            "known readings use the canonical order");
+
         // The app sends rssi and timestamp, and InfluxDB adds `_start`/`_stop`.
         // None of those may turn into a sensor column.
         var noisy = Grafana.parseResponse(200, response([{
@@ -361,8 +374,11 @@ Item {
             "rssi and timestamp are excluded");
         check(noisy.rows[0].columns.length === 4,
             "noisy frame has three readings plus dew point");
-        check(noisy.rows[0].columns[2].field === "dewPoint",
-            "dew point follows humidity");
+        check(noisy.rows[0].columns[0].field === "temperature"
+            && noisy.rows[0].columns[1].field === "humidity"
+            && noisy.rows[0].columns[2].field === "dewPoint"
+            && noisy.rows[0].columns[3].field === "battery",
+            "discovered columns use the canonical order");
 
         var derived = Grafana.deriveSensorFields(discovered.rows, []);
         check(derived.length === 4, "discovery derives every column");
@@ -376,10 +392,22 @@ Item {
             "noisy discovery derives only real readings");
         var preserved = Grafana.deriveSensorFields(discovered.rows, [{
             "field": "temperature", "label": "Room",
-            "format": "temperature", "align": "right"
+            "format": "temperature"
         }]);
         check(preserved[0].label === "Room", "configured label is preserved");
         check(preserved.length === 4, "missing discovered columns are added");
+
+        check(Grafana.alignmentFor(0, 4) === "left"
+            && Grafana.alignmentFor(1, 4) === "left"
+            && Grafana.alignmentFor(2, 4) === "right"
+            && Grafana.alignmentFor(3, 4) === "right",
+            "even counts split left and right");
+        check(Grafana.alignmentFor(0, 3) === "left"
+            && Grafana.alignmentFor(1, 3) === "center"
+            && Grafana.alignmentFor(2, 3) === "right",
+            "odd counts centre the middle reading");
+        check(Grafana.alignmentFor(0, 1) === "center",
+            "a single reading is centred");
 
         var outsideBody = Grafana.queryBody({
             "datasourceUid": "influxdb",

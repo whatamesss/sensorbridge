@@ -43,10 +43,6 @@ Item {
         {"value": "negative", "label": i18n("Red while non-zero")},
         {"value": "positive", "label": i18n("Green while non-zero")}
     ]
-    property var alignChoices: [
-        {"value": "left", "label": i18n("Left")},
-        {"value": "right", "label": i18n("Right")}
-    ]
 
     onCfg_sensorFieldsChanged: {
         if (!page.applyingEditor && page.fieldRows.length === 0) {
@@ -69,8 +65,7 @@ Item {
             list.push({
                 "field": row.field,
                 "label": row.label,
-                "format": row.format,
-                "align": row.align
+                "format": row.format
             });
         }
 
@@ -89,8 +84,7 @@ Item {
                 "label": row.label,
                 "source": row.sourceText,
                 "format": row.format,
-                "color": row.color,
-                "align": row.align
+                "color": row.color
             });
         }
 
@@ -103,8 +97,7 @@ Item {
         page.fieldRows = page.fieldRows.concat([{
             "field": "",
             "label": "",
-            "format": "raw",
-            "align": "left"
+            "format": "raw"
         }]);
         page.commitFields();
     }
@@ -122,8 +115,7 @@ Item {
             "label": "",
             "sourceText": "",
             "format": "raw",
-            "color": "none",
-            "align": "left"
+            "color": "none"
         }]);
         page.commitExtras();
     }
@@ -308,7 +300,9 @@ Item {
                         + " derive a dew point when temperature and humidity are"
                         + " present. dewPoint is derived; every other field is"
                         + " queried. Metadata such as rssi and timestamp is never"
-                        + " shown.")
+                        + " shown. Readings on the left align left, readings on"
+                        + " the right align right, and an odd count centres the"
+                        + " middle reading.")
                 }
 
                 Repeater {
@@ -371,27 +365,13 @@ Item {
                             }
                         }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            Choice {
-                                caption: i18n("Format")
-                                options: page.formatChoices
-                                value: fieldRow.row.format
-                                onPicked: function (value) {
-                                    fieldRow.row.format = value;
-                                    page.commitFields();
-                                }
-                            }
-
-                            Choice {
-                                caption: i18n("Alignment")
-                                options: page.alignChoices
-                                value: fieldRow.row.align
-                                onPicked: function (value) {
-                                    fieldRow.row.align = value;
-                                    page.commitFields();
-                                }
+                        Choice {
+                            caption: i18n("Format")
+                            options: page.formatChoices
+                            value: fieldRow.row.format
+                            onPicked: function (value) {
+                                fieldRow.row.format = value;
+                                page.commitFields();
                             }
                         }
                     }
@@ -422,7 +402,9 @@ Item {
                         + " Source is measurement|tag=value|field in the same"
                         + " bucket; the tag part is optional. Colour leaves the"
                         + " value alone, turns it red, or turns it green while"
-                        + " the value is not zero.")
+                        + " the value is not zero. The left half aligns left, the"
+                        + " right half aligns right, and an odd count centres the"
+                        + " middle reading.")
                 }
 
                 Repeater {
@@ -504,16 +486,6 @@ Item {
                                 value: extraRow.row.color
                                 onPicked: function (value) {
                                     extraRow.row.color = value;
-                                    page.commitExtras();
-                                }
-                            }
-
-                            Choice {
-                                caption: i18n("Alignment")
-                                options: page.alignChoices
-                                value: extraRow.row.align
-                                onPicked: function (value) {
-                                    extraRow.row.align = value;
                                     page.commitExtras();
                                 }
                             }

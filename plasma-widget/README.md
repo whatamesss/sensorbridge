@@ -167,8 +167,8 @@ datasourceUid=influxdb
 bucket=sensors
 measurement=mqtt_consumer
 sensors=GVH5075_B6D2=Living room,GVH5075_E22C=Shed
-sensorFields=[{"field":"temperature","label":"Temperature","format":"temperature","align":"left"},{"field":"humidity","label":"Humidity","format":"humidity","align":"left"},{"field":"dewPoint","label":"Dew point","format":"temperature","align":"right"},{"field":"battery","label":"Battery","format":"battery","align":"right"}]
-extraReadings=[{"label":"Outside","source":"ibc_boiler|boiler=SL10-85G3|outdoor_c","format":"temperature","color":"none","align":"left"},{"label":"High Mass Ht.","source":"ibc_boiler|boiler=SL10-85G3|load2_btu","format":"kbtu","color":"negative","align":"left"},{"label":"Errors","source":"ibc_boiler|boiler=SL10-85G3|active_errors","format":"count","color":"negative","align":"right"},{"label":"Connects","source":"jellyfin_connections|service=jellyfin|value","format":"count","color":"positive","align":"right"}]
+sensorFields=[{"field":"temperature","label":"Temperature","format":"temperature"},{"field":"humidity","label":"Humidity","format":"humidity"},{"field":"dewPoint","label":"Dew point","format":"temperature"},{"field":"battery","label":"Battery","format":"battery"}]
+extraReadings=[{"label":"Outside","source":"ibc_boiler|boiler=SL10-85G3|outdoor_c","format":"temperature","color":"none"},{"label":"High Mass Ht.","source":"ibc_boiler|boiler=SL10-85G3|load2_btu","format":"kbtu","color":"negative"},{"label":"Errors","source":"ibc_boiler|boiler=SL10-85G3|active_errors","format":"count","color":"negative"},{"label":"Connects","source":"jellyfin_connections|service=jellyfin|value","format":"count","color":"positive"}]
 refreshSeconds=60
 bypassProxy=true
 ```
@@ -186,25 +186,30 @@ from the effective settings.
 
 ### Sensor columns
 
-`sensorFields` is a JSON array in display order. Each entry is:
+`sensorFields` is a JSON array. Each entry is:
 
 ```json
 {"field": "temperature", "label": "Temperature",
- "format": "temperature", "align": "left"}
+ "format": "temperature"}
 ```
 
 - `field` is the InfluxDB field name. `dewPoint` is special: it is derived
   from the `temperature` and `humidity` fields and is not queried.
 - `label` is the text under the value.
 - `format` is `temperature`, `humidity`, `battery`, `kbtu`, `count` or `raw`.
-- `align` is `left` or `right`.
+
+The known Govee readings are always displayed in the order temperature,
+humidity, dew point, battery; unrecognised custom fields follow in their
+configured order. Alignment is automatic: the left half of the readings aligns
+left, the right half aligns right, and with an odd count the middle reading is
+centred. There is no alignment setting.
 
 An empty array means the widget uses every numeric field with a known display
 format that the datasource returns, labels them from the field names, and adds
 a dew-point column directly after humidity when both temperature and humidity
 are present. Metadata fields (`time`, `timestamp`, `name`, `address`, `rssi`
 and anything starting with `_`) are never shown as a column. The Discover
-action saves the result, so the labels and order can then be edited in
+action saves the result, so the labels and formats can then be edited in
 Configure.
 
 ### Extra readings
@@ -213,14 +218,15 @@ Configure.
 
 ```json
 {"label": "Outside", "source": "ibc_boiler|boiler=SL10-85G3|outdoor_c",
- "format": "temperature", "color": "none", "align": "left"}
+ "format": "temperature", "color": "none"}
 ```
 
 `source` is `measurement|tag=value|field` in the same bucket; the tag part is
 optional (`weather|temp_c`). The tag key must be an identifier. Entries with a
 missing field or malformed tag are ignored rather than turning into a broken
-query. `format` and `align` accept the same values as sensor columns. `color`
-is `none`, `negative` (red while non-zero) or `positive` (green while non-zero).
+query. `format` accepts the same values as sensor columns. `color` is `none`,
+`negative` (red while non-zero) or `positive` (green while non-zero). Alignment
+follows the same position-based rule as the sensor columns.
 
 ### Upgrading from the four fixed readings
 

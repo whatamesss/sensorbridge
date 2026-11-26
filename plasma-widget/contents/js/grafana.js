@@ -14,8 +14,6 @@ var FORMATS = ["temperature", "humidity", "battery", "kbtu", "count", "raw"];
 // Values accepted by the `color` field of an extra reading.
 var COLORS = ["none", "negative", "positive"];
 
-var ALIGNMENTS = ["left", "right"];
-
 // Frame columns that describe a point rather than measure it, including the
 // app's own payload metadata. They must never become sensor columns.
 var RESERVED_FIELDS = ["time", "timestamp", "name", "address", "rssi"];
@@ -30,6 +28,58 @@ function isReservedField(field) {
     }
 
     return RESERVED_FIELDS.indexOf(key) >= 0;
+}
+
+// Pivot output comes back alphabetically, which puts battery first and
+// temperature last. Show the Govee readings in their familiar order instead.
+var FIELD_ORDER = ["temperature", "humidity", "dewpoint", "battery"];
+
+function sensorFieldRank(field) {
+    var key = String(field === null || field === undefined ? "" : field)
+        .trim().toLowerCase();
+    var rank = FIELD_ORDER.indexOf(key);
+
+    return rank >= 0 ? rank : FIELD_ORDER.length;
+}
+
+/** Stable sort that keeps recognised readings in the familiar order. */
+function orderSensorFields(fields) {
+    var wrapped = [];
+    var ordered = [];
+
+    for (var i = 0; fields && i < fields.length; i++) {
+        wrapped.push({
+            "field": fields[i],
+            "index": i,
+            "rank": sensorFieldRank(fields[i].field)
+        });
+    }
+
+    wrapped.sort(function (a, b) {
+        return a.rank - b.rank || a.index - b.index;
+    });
+
+    for (var j = 0; j < wrapped.length; j++) {
+        ordered.push(wrapped[j].field);
+    }
+
+    return ordered;
+}
+
+/**
+ * Position-based reading alignment: the left half aligns left, the right half
+ * aligns right, and with an odd count the middle reading is centred.
+ */
+function alignmentFor(index, count) {
+    if (!(count > 0) || index < 0 || index >= count) {
+        return "left";
+    }
+
+    if (count % 2 === 1 && index === Math.floor(count / 2)) {
+        return "center";
+    }
+
+    return index < count / 2 ? "left" : "right";
 }
 
 /** "outdoor_c" / "dewPoint" -> "Outdoor C" / "Dew Point". */
@@ -98,13 +148,6 @@ function normalizeColor(value) {
         .trim().toLowerCase();
 
     return COLORS.indexOf(text) >= 0 ? text : "none";
-}
-
-function normalizeAlign(value) {
-    var text = String(value === null || value === undefined ? "" : value)
-        .trim().toLowerCase();
-
-    return text === "right" || text === "end" ? "right" : "left";
 }
 
 /**
@@ -205,7 +248,7 @@ function parseSideSource(raw) {
  * Parses the JSON `extraReadings` setting:
  *
  *   [{"label":"Outside","source":"m|tag=v|field",
- *     "format":"temperature","color":"none","align":"left"}]
+ *     "format":"temperature","color":"none"}]
  *
  * A bare string source is accepted too. Invalid sources are dropped instead
  * of sending a broken query. The returned entries carry both the original
@@ -236,7 +279,6 @@ function parseExtraReadings(raw) {
         var label = "";
         var format = "";
         var color = "";
-        var align = "";
 
         if (typeof item === "string") {
             sourceText = item;
@@ -249,8 +291,6 @@ function parseExtraReadings(raw) {
                 || item.format === null ? "" : item.format).trim();
             color = String(item.color === undefined
                 || item.color === null ? "" : item.color).trim();
-            align = String(item.align === undefined
-                || item.align === null ? "" : item.align).trim();
         } else {
             continue;
         }
@@ -266,8 +306,7 @@ function parseExtraReadings(raw) {
             "sourceText": sourceText,
             "source": source,
             "format": normalizeFormat(format, source.field),
-            "color": normalizeColor(color),
-            "align": normalizeAlign(align)
+            "color": normalizeColor(color)
         });
     }
 
@@ -305,7 +344,6 @@ function parseSensorFields(raw) {
         var field = "";
         var label = "";
         var format = "";
-        var align = "";
 
         if (typeof item === "string") {
             field = item.trim();
@@ -316,8 +354,6 @@ function parseSensorFields(raw) {
                 || item.label === null ? "" : item.label).trim();
             format = String(item.format === undefined
                 || item.format === null ? "" : item.format).trim();
-            align = String(item.align === undefined
-                || item.align === null ? "" : item.align).trim();
         } else {
             continue;
         }
@@ -331,12 +367,11 @@ function parseSensorFields(raw) {
         fields.push({
             "field": field,
             "label": label.length > 0 ? label : humanizeField(field),
-            "format": normalizeFormat(format, field),
-            "align": normalizeAlign(align)
+            "format": normalizeFormat(format, field)
         });
     }
 
-    return fields;
+    return orderSensorFields(fields);
 }
 
 /**
@@ -363,8 +398,7 @@ function deriveSensorFields(rows, existing) {
         fields.push({
             "field": configured.field,
             "label": configured.label,
-            "format": configured.format,
-            "align": configured.align
+            "format": configured.format
         });
     }
 
@@ -384,8 +418,7 @@ function deriveSensorFields(rows, existing) {
             fields.push({
                 "field": name,
                 "label": humanizeField(name),
-                "format": inferFormat(name),
-                "align": "left"
+                "format": inferFormat(name)
             });
         }
     }
@@ -403,12 +436,11 @@ function deriveSensorFields(rows, existing) {
         fields.splice(humidityIndex + 1, 0, {
             "field": "dewPoint",
             "label": humanizeField("dewPoint"),
-            "format": "temperature",
-            "align": "left"
+            "format": "temperature"
         });
     }
 
-    return fields;
+    return orderSensorFields(fields);
 }
 
 /** Escapes a value for use inside a double-quoted Flux string. */
@@ -947,8 +979,7 @@ function columnsFor(rows, configuredFields) {
             defs.push({
                 "field": configured.field,
                 "label": configured.label,
-                "format": configured.format,
-                "align": configured.align || "left"
+                "format": configured.format
             });
         }
     } else {
@@ -968,8 +999,7 @@ function columnsFor(rows, configuredFields) {
                 defs.push({
                     "field": name,
                     "label": humanizeField(name),
-                    "format": inferFormat(name),
-                    "align": "left"
+                    "format": inferFormat(name)
                 });
             }
         }
@@ -987,11 +1017,12 @@ function columnsFor(rows, configuredFields) {
             defs.splice(humidityIndex + 1, 0, {
                 "field": "dewPoint",
                 "label": humanizeField("dewPoint"),
-                "format": "temperature",
-                "align": "left"
+                "format": "temperature"
             });
         }
     }
+
+    defs = orderSensorFields(defs);
 
     for (i = 0; rows && i < rows.length; i++) {
         var columns = [];
@@ -1001,7 +1032,6 @@ function columnsFor(rows, configuredFields) {
                 "field": defs[j].field,
                 "label": defs[j].label,
                 "format": defs[j].format,
-                "align": defs[j].align,
                 "value": valueForField(rows[i], defs[j].field)
             });
         }

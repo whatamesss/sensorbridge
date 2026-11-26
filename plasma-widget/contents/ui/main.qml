@@ -13,9 +13,7 @@ PlasmoidItem {
 
     property var readings: []
     property var sides: null
-    property var sensorColumnWidths: []
     property var extraList: []
-    property var sensorFieldList: []
     property string pendingCommand: ""
     property var pendingNames: []
     property var pendingSides: null
@@ -125,30 +123,20 @@ PlasmoidItem {
     }
 
     /**
-     * Keeps the parsed lists in sync with the effective configuration. When
-     * a list changes, drop the values and measured widths that belonged to
-     * the old list so a reading is never shown under another reading's label
-     * and the side values stay aligned with the sensor columns.
+     * Keeps the parsed extra readings in sync with the effective configuration.
+     * When the list changes, drop the old values so a reading is never shown
+     * under another reading's label.
      */
     function refreshDerivedConfig() {
         var nextExtras = Grafana.parseExtraReadings(
             root.configValue("extraReadings"));
-        var nextFields = Grafana.parseSensorFields(
-            root.configValue("sensorFields"));
         var extrasChanged = JSON.stringify(nextExtras)
             !== JSON.stringify(root.extraList);
-        var fieldsChanged = JSON.stringify(nextFields)
-            !== JSON.stringify(root.sensorFieldList);
 
         root.extraList = nextExtras;
-        root.sensorFieldList = nextFields;
 
         if (extrasChanged) {
             root.sides = null;
-        }
-
-        if (fieldsChanged) {
-            root.sensorColumnWidths = [];
         }
     }
 
@@ -428,33 +416,42 @@ PlasmoidItem {
         return Kirigami.Theme.textColor;
     }
 
-    /** Keeps the side values aligned with the first sensor row. */
-    function reportColumnWidth(rowIndex, columnIndex, width) {
-        if (rowIndex !== 0 || width <= 0) {
-            return;
+    /**
+     * Alignment follows position: left half left, right half right, and the
+     * middle reading centred when the count is odd.
+     */
+    function readingAlignment(index, count) {
+        var align = Grafana.alignmentFor(index, count);
+
+        if (align === "right") {
+            return Qt.AlignRight;
         }
 
-        var widths = (root.sensorColumnWidths || []).slice();
-
-        if (widths[columnIndex] === width) {
-            return;
+        if (align === "center") {
+            return Qt.AlignHCenter;
         }
 
-        widths[columnIndex] = width;
-        root.sensorColumnWidths = widths;
+        return Qt.AlignLeft;
     }
 
     /**
-     * Width of one sensor value column, measured from the first sensor row.
-     * The side readings use these widths so their values sit exactly above
-     * the sensor values. Falls back to the item's own width when no sensor
-     * row has been laid out yet.
+     * Gap before each top-row reading: a little more room after Outside and
+     * a little less before Connects.
      */
-    function sideColumnWidth(index, fallback) {
-        var widths = root.sensorColumnWidths;
+    function extraGap(index) {
+        if (index === 1) {
+            return Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing;
+        }
 
-        return widths && widths.length > index && widths[index] > 0
-            ? widths[index] : fallback;
+        if (index === 2) {
+            return Kirigami.Units.largeSpacing;
+        }
+
+        if (index === 3) {
+            return Kirigami.Units.smallSpacing;
+        }
+
+        return 0;
     }
 
     /**
@@ -1018,26 +1015,22 @@ PlasmoidItem {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.largeSpacing
+                    spacing: 0
 
                     Repeater {
                         model: root.extraList
 
                         delegate: Metric {
-                            Layout.preferredWidth: root.sideColumnWidth(
-                                index, implicitWidth)
+                            Layout.fillWidth: true
+                            Layout.leftMargin: root.extraGap(index)
                             value: root.sideText(index)
                             valueColor: root.sideValueColor(index)
-                            valueAlignment: modelData.align === "right"
-                                ? Qt.AlignRight : Qt.AlignLeft
-                            labelAlignment: modelData.align === "right"
-                                ? Qt.AlignRight : Qt.AlignLeft
+                            valueAlignment: root.readingAlignment(
+                                index, root.extraList.length)
+                            labelAlignment: root.readingAlignment(
+                                index, root.extraList.length)
                             label: modelData.label
                         }
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
                     }
                 }
             }
@@ -1056,7 +1049,7 @@ PlasmoidItem {
                 delegate: ColumnLayout {
                     id: sensorRow
 
-                    property int rowIndex: index
+                    property int columnCount: (modelData.columns || []).length
 
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
@@ -1098,23 +1091,15 @@ PlasmoidItem {
                             model: modelData.columns
 
                             delegate: Metric {
+                                Layout.fillWidth: true
                                 value: Grafana.formatValue(
                                     modelData.format, modelData.value)
                                 label: modelData.label
-                                valueAlignment: modelData.align === "right"
-                                    ? Qt.AlignRight : Qt.AlignLeft
-                                labelAlignment: modelData.align === "right"
-                                    ? Qt.AlignRight : Qt.AlignLeft
-
-                                Component.onCompleted: root.reportColumnWidth(
-                                    sensorRow.rowIndex, index, implicitWidth)
-                                onImplicitWidthChanged: root.reportColumnWidth(
-                                    sensorRow.rowIndex, index, implicitWidth)
+                                valueAlignment: root.readingAlignment(
+                                    index, sensorRow.columnCount)
+                                labelAlignment: root.readingAlignment(
+                                    index, sensorRow.columnCount)
                             }
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
                         }
                     }
                 }

@@ -44,13 +44,13 @@ var READ_KEYS = KEYS.concat(LEGACY_KEYS);
 
 var LEGACY_EXTRAS = [
     {key: "outside", label: "Outside", format: "temperature",
-        color: "none", align: "left"},
+        color: "none"},
     {key: "boilerHeat", label: "High Mass Ht.", format: "kbtu",
-        color: "negative", align: "left"},
+        color: "negative"},
     {key: "boilerErrors", label: "Errors", format: "count",
-        color: "negative", align: "right"},
+        color: "negative"},
     {key: "jfConnections", label: "Connects", format: "count",
-        color: "positive", align: "right"}
+        color: "positive"}
 ];
 
 /**
@@ -150,8 +150,7 @@ function migrateExtraReadings(values) {
             "label": def.label,
             "source": text,
             "format": def.format,
-            "color": def.color,
-            "align": def.align
+            "color": def.color
         });
     }
 
