@@ -132,9 +132,12 @@ Android app ──MQTT──▶ broker ──▶ Telegraf ──▶ InfluxDB ─
   configured bucket and measurement, with the sensor `name` as a tag.
 - Grafana queries that InfluxDB datasource. The widget sends one Flux query to
   Grafana for the newest point per sensor in the last 24 hours and parses the
-  returned data frames. Extra queries read outside temperature, high-mass heat
-  and active errors from the boiler measurement, plus the Jellyfin connection
-  count from the Xeon host measurement, all in the same bucket.
+  returned data frames. Each configured extra reading adds one more query; by
+  default that shows outside temperature, high-mass boiler heat and active
+  errors from the boiler measurement, plus the Jellyfin connection count from
+  the Xeon host measurement, all in the same bucket. Sensor names, display
+  labels, columns and the extra-reading list are configuration, not code, and
+  every sensor in the bucket can be discovered from the widget.
 
 Grafana is therefore a required hop, not an optional dashboard. Any pipeline
 that ends in the same InfluxDB bucket and measurement works, but the widget
@@ -145,9 +148,9 @@ datasource) are fine — set *Datasource UID*, *InfluxDB bucket* and *Measuremen
 to whatever writes those points.
 
 The widget reads its saved settings from `~/.config/sensorbridge` at launch and
-writes changes made in **Configure** back to that file. Double-click the widget
-body to open the configured Dashboard URL in a browser; when it is empty, the
-Grafana API URL is opened instead. See
+writes changes made in **Configure** (and sensors found by **Discover**) back to
+that file. Double-click the widget body to open the configured Dashboard URL in
+a browser; when it is empty, the Grafana API URL is opened instead. See
 [`plasma-widget/README.md`](plasma-widget/README.md) for configuration and
 troubleshooting.
 

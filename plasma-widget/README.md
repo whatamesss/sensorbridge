@@ -1,10 +1,11 @@
 # SensorBridge Plasma widget
 
 A KDE Plasma 6 desktop widget that shows the latest Govee H5075 readings. One
-row per sensor, with temperature, humidity, dew point, battery and the age of
-the reading, plus optional single-value readings (outside temperature,
-high-mass boiler heat, boiler errors and Jellyfin connections) fed by other
-measurements in the same InfluxDB bucket.
+row per sensor, with the value columns described by the configuration
+(temperature, humidity, dew point, battery by default), plus an ordered list of
+single-value readings (outside temperature, high-mass boiler heat, boiler
+errors, Jellyfin connections, …) fed by other measurements in the same InfluxDB
+bucket.
 
 ![SensorBridge widget showing two sensors](../docs/screenshots/plasma-widget.png)
 
@@ -85,23 +86,27 @@ mirrored into Plasma's applet configuration, so **Configure** shows the
 settings actually in use. If the file is missing, the widget falls back to the
 configuration Plasma keeps for the applet.
 
+The shared file is the source of truth for every configurable value. Sensor
+names, display labels, formats, colours and the list of extra readings are not
+built into the widget; the defaults in `contents/config/main.xml` are empty on
+purpose and the widget reads them from the file.
+
 Right-click the widget and choose **Configure** to change the settings. A
 change applies immediately and is saved back to `~/.config/sensorbridge`, so it
 survives a restart even if the applet is removed and re-added:
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| Grafana API URL | `http://grafana:3000` | Base URL that `/api/ds/query` is appended to, including any subpath — **not** a `/public-dashboards/…` link |
+| Widget title | applet name | Shown in the header; empty uses the applet title |
+| Grafana API URL | empty | Base URL that `/api/ds/query` is appended to, including any subpath — **not** a `/public-dashboards/…` link |
 | Dashboard URL | empty | Opened on double-click; empty falls back to the Grafana API URL |
 | Service account token | empty | Grafana service account token; leave empty only for anonymous Grafana |
-| Datasource UID | `influxdb` | UID from the datasource settings page |
-| InfluxDB bucket | `sensors` | Bucket fed by Telegraf |
-| Measurement | `mqtt_consumer` | Measurement written by Telegraf |
-| Sensor names | `GVH5075_B6D2,GVH5075_E22C` | Comma-separated `name` tag values; append `=Label` to show only that name; empty shows all |
-| Outside temperature | `ibc_boiler\|boiler=SL10-85G3\|outdoor_c` | `measurement\|tag=value\|field` in the same bucket; empty hides the reading |
-| High-mass heating | `ibc_boiler\|boiler=SL10-85G3\|load2_btu` | BTU/h field, shown as kBtu/h; red when non-zero; empty hides it |
-| Boiler errors | `ibc_boiler\|boiler=SL10-85G3\|active_errors` | Count of active controller errors, as on the ibc-boiler dashboard; red when non-zero; empty hides it |
-| Jellyfin connections | `jellyfin_connections\|service=jellyfin\|value` | Connection count; green when non-zero; empty hides it |
+| Datasource UID | empty | UID from the datasource settings page |
+| InfluxDB bucket | empty | Bucket fed by Telegraf |
+| Measurement | empty | Measurement written by Telegraf |
+| Sensor names | empty | Comma-separated `name` tag values; `name=Label` renames one; empty shows every sensor and enables discovery |
+| Sensor columns | empty | JSON array; empty shows every numeric field and adds a derived dew point |
+| Extra readings | empty | JSON array of single-value readings, in display order |
 | Refresh interval | 60 s | Minimum 10 s |
 | Bypass system proxy | on | Turn off to let `curl` use the session's proxy settings |
 
@@ -125,25 +130,40 @@ The token is stored in plain text in the shared settings file (or in
 `~/.config/plasma-org.kde.plasma.desktop-appletsrc` when that file is absent).
 Use a read-only token scoped to this purpose.
 
+### Discovering sensors
+
+Leave **Sensor names** empty and the widget queries every sensor in the bucket.
+Press the search button in the widget header (next to Refresh) to do that
+explicitly and save the result. Discovery:
+
+- adds every `name` tag value the query returns,
+- keeps labels already present as `name=Label`,
+- keeps configured names that did not answer, so a sleeping sensor is not
+  silently removed, and
+- fills **Sensor columns** with the numeric fields it found, preserving any
+  columns and labels already configured.
+
+Discovery writes the updated sensor list and column list to
+`~/.config/sensorbridge` immediately, so it also survives removing the widget.
+
 ### Shared settings file
 
-Settings that must survive removing and re-adding the applet belong in
+All values that must survive removing and re-adding the applet belong in
 `~/.config/sensorbridge`:
 
 ```ini
 [General]
 configured=1
+title=SensorBridge
 grafanaUrl=http://grafana:3000
 dashboardUrl=http://grafana:3000/d/abc/home
 apiToken=your-service-account-token
 datasourceUid=influxdb
 bucket=sensors
 measurement=mqtt_consumer
-sensors=GVH5075_B6D2=House,GVH5075_E22C=Garage
-outside=ibc_boiler|boiler=SL10-85G3|outdoor_c
-boilerHeat=ibc_boiler|boiler=SL10-85G3|load2_btu
-jfConnections=jellyfin_connections|service=jellyfin|value
-boilerErrors=ibc_boiler|boiler=SL10-85G3|active_errors
+sensors=GVH5075_B6D2=Living room,GVH5075_E22C=Shed
+sensorFields=[{"field":"temperature","label":"Temperature","format":"temperature","align":"left"},{"field":"humidity","label":"Humidity","format":"humidity","align":"left"},{"field":"dewPoint","label":"Dew point","format":"temperature","align":"right"},{"field":"battery","label":"Battery","format":"battery","align":"right"}]
+extraReadings=[{"label":"Outside","source":"ibc_boiler|boiler=SL10-85G3|outdoor_c","format":"temperature","color":"none","align":"left"},{"label":"High Mass Ht.","source":"ibc_boiler|boiler=SL10-85G3|load2_btu","format":"kbtu","color":"negative","align":"left"},{"label":"Errors","source":"ibc_boiler|boiler=SL10-85G3|active_errors","format":"count","color":"negative","align":"right"},{"label":"Connects","source":"jellyfin_connections|service=jellyfin|value","format":"count","color":"positive","align":"right"}]
 refreshSeconds=60
 bypassProxy=true
 ```
@@ -154,9 +174,52 @@ double-clicking the widget opens it when set, otherwise it opens `grafanaUrl`.
 Both URLs can also be set in the Configure dialog. Keep the file owner-only
 (`chmod 600`) because it holds the token.
 
-The widget only writes this file in response to a **Configure** edit. It is
-never rewritten at launch, so a stale file cannot overwrite settings you just
-saved. Saving the dialog rewrites the whole file from the effective settings.
+The widget only writes this file in response to a **Configure** edit or an
+explicit discovery. It is never rewritten at launch, so a stale file cannot
+overwrite settings you just saved. Saving the dialog rewrites the whole file
+from the effective settings.
+
+### Sensor columns
+
+`sensorFields` is a JSON array in display order. Each entry is:
+
+```json
+{"field": "temperature", "label": "Temperature",
+ "format": "temperature", "align": "left"}
+```
+
+- `field` is the InfluxDB field name. `dewPoint` is special: it is derived
+  from the `temperature` and `humidity` fields and is not queried.
+- `label` is the text under the value.
+- `format` is `temperature`, `humidity`, `battery`, `kbtu`, `count` or `raw`.
+- `align` is `left` or `right`.
+
+An empty array means the widget uses every numeric field the datasource
+returns, labels them from the field names, and adds a dew-point column when
+both temperature and humidity are present. The Discover action saves the
+result, so the labels and order can then be edited in Configure.
+
+### Extra readings
+
+`extraReadings` is a JSON array in display order. Each entry is:
+
+```json
+{"label": "Outside", "source": "ibc_boiler|boiler=SL10-85G3|outdoor_c",
+ "format": "temperature", "color": "none", "align": "left"}
+```
+
+`source` is `measurement|tag=value|field` in the same bucket; the tag part is
+optional (`weather|temp_c`). The tag key must be an identifier. Entries with a
+missing field or malformed tag are ignored rather than turning into a broken
+query. `format` and `align` accept the same values as sensor columns. `color`
+is `none`, `negative` (red while non-zero) or `positive` (green while non-zero).
+
+### Upgrading from the four fixed readings
+
+Older builds stored `outside`, `boilerHeat`, `jfConnections` and
+`boilerErrors`. Those keys are still read and converted to `extraReadings` in
+memory, keeping their old labels, formats and colours. The next Configure edit
+or discovery writes the new list to the file and drops the legacy keys.
 
 ## How it works
 
@@ -167,7 +230,7 @@ forms) plus `LD_PRELOAD` (proxychains), and passes `--noproxy '*'`, so the
 request goes straight to Grafana. Turn it off to let `curl` use the session's
 proxy environment instead.
 
-The query it sends:
+With configured sensor columns the query is:
 
 ```flux
 from(bucket: "sensors")
@@ -181,14 +244,17 @@ from(bucket: "sensors")
   |> tail(n: 1)
 ```
 
+With no sensor names and no columns (the discovery query), both filters are
+omitted, so every numeric field of every sensor is returned.
+
 Configured sensors with no point in the last 24 hours stay visible as
 **no data**, so a sensor that stops reporting does not simply disappear. A
 reading named `TEST` is ignored.
 
-Up to three extra single-value readings can sit above the sensors. Each one is
-configured separately and fetched with its own query (`refId B`, `C` and `D` in
-that order), which reads another measurement from the same bucket and takes the
-newest point of one field:
+The extra readings sit above the sensors. Each one is configured separately and
+fetched with its own query (`refId B`, `C`, `D`, … in configured order), which
+reads another measurement from the same bucket and takes the newest point of
+one field:
 
 ```flux
 from(bucket: "sensors")
@@ -199,17 +265,18 @@ from(bucket: "sensors")
   |> tail(n: 1)
 ```
 
-The settings are written as `measurement|tag=value|field`; the tag part is
-optional, so `weather|temp_c` also works. Defaults match the collectors under
-`local-only/`:
+Defaults that used to be built in now live in the shared file. For the
+collectors under `local-only/` they are:
 
 - **Outside temperature** — `ibc_boiler|boiler=SL10-85G3|outdoor_c` (°C).
 - **High-mass heating** — `ibc_boiler|boiler=SL10-85G3|load2_btu`. The value is
   BTU/h and is shown as kBtu/h; it turns red while non-zero.
 - **Jellyfin connections** — `jellyfin_connections|service=jellyfin|value`,
   shown as a count and turning green while non-zero.
+- **Boiler errors** — `ibc_boiler|boiler=SL10-85G3|active_errors`, shown as a
+  count and turning red while non-zero.
 
-An empty setting hides that reading. A failed extra query does not hide the
+An empty list hides the extra readings. A failed extra query does not hide the
 sensors; the affected reading simply shows **no data**.
 
 Append `=Label` in **Sensor names** to show a friendly room name:
@@ -220,11 +287,13 @@ the Flux query uses only the part before
 
 The widget parses Grafana's data frames tolerantly: it accepts the sensor name
 from field labels or from a `name` column, and merges frames if the datasource
-returns one frame per field.
+returns one frame per field. Columns and values are taken from the config (or
+from the response when the column list is empty).
 
 Dew point is derived from each reading's temperature and humidity with the
 Magnus-Tetens formula; it is not a separate InfluxDB field or Grafana query. It
-shows as **–** when either value is missing.
+shows as **–** when either value is missing, or is not shown at all when the
+configured column list does not include `dewPoint`.
 
 ## Troubleshooting
 
@@ -236,8 +305,8 @@ shows as **–** when either value is missing.
   `/api/ds/query` is not served under, or the configured Datasource UID does
   not exist.
 - **HTTP 400** — Grafana rejected the query. The error from Grafana is shown
-  in the widget; check the bucket, measurement, sensor names and that the
-  datasource supports Flux.
+  in the widget; check the bucket, measurement, sensor names, column fields and
+  that the datasource supports Flux.
 - **HTTP 5xx** — Grafana (or a reverse proxy in front of it) is temporarily
   unavailable or a backend query failed. The widget retries twice, three
   seconds apart, and shows the server's message or response body so the
@@ -254,9 +323,15 @@ shows as **–** when either value is missing.
 - **Self-signed HTTPS** — `curl` rejects untrusted certificates. Use HTTP on
   the local network or install the CA in the system trust store.
 - **No data for a sensor** — verify the `name` tag in InfluxDB matches the
-  configured sensor names, and that the measurement and bucket are correct.
-- **An extra reading shows no data** — check its **Outside temperature**,
-  **High-mass heating** or **Jellyfin connections** source against the
+  configured sensor names (or leave the list empty and press Discover), and
+  that the measurement and bucket are correct.
+- **A column is missing** — check that `sensorFields` names the InfluxDB field
+  exactly, or empty the list to discover the numeric fields. `dewPoint` needs
+  the `temperature` and `humidity` fields.
+- **An extra reading shows no data** — check its `source` against the
   measurement, tag and field written by the other collector. An invalid entry
   (for example a missing field or a tag key that is not an identifier) hides
   that reading instead of querying.
+- **Settings did not survive** — make sure the edit was applied with **OK** or
+  **Apply** in Configure, or that Discover ran. The file is deliberately not
+  written at launch.

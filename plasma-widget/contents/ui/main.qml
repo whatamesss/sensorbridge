@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as P5Support
@@ -13,10 +14,16 @@ PlasmoidItem {
     property var readings: []
     property var sides: null
     property var sensorColumnWidths: []
+    property var extraList: []
+    property var sensorFieldList: []
     property string pendingCommand: ""
     property var pendingNames: []
     property var pendingSides: null
+    property var pendingFields: []
     property bool loading: false
+    property bool discovering: false
+    property bool applyingDiscovery: false
+    property string pendingDiscoverCommand: ""
     property string errorText: ""
     property int retryCount: 0
     property real nowMs: Date.now()
@@ -36,6 +43,10 @@ PlasmoidItem {
     /** Reads a setting from the applet's own Plasma configuration. */
     function liveConfigValue(key) {
         var cfg = Plasmoid.configuration;
+
+        if (key === "title") {
+            return cfg.title;
+        }
 
         if (key === "grafanaUrl") {
             return cfg.grafanaUrl;
@@ -63,6 +74,14 @@ PlasmoidItem {
 
         if (key === "sensors") {
             return cfg.sensors;
+        }
+
+        if (key === "sensorFields") {
+            return cfg.sensorFields;
+        }
+
+        if (key === "extraReadings") {
+            return cfg.extraReadings;
         }
 
         if (key === "outside") {
@@ -105,6 +124,79 @@ PlasmoidItem {
             ? saved[key] : liveConfigValue(key);
     }
 
+    /**
+     * Keeps the parsed lists in sync with the effective configuration. When
+     * a list changes, drop the values and measured widths that belonged to
+     * the old list so a reading is never shown under another reading's label
+     * and the side values stay aligned with the sensor columns.
+     */
+    function refreshDerivedConfig() {
+        var nextExtras = Grafana.parseExtraReadings(
+            root.configValue("extraReadings"));
+        var nextFields = Grafana.parseSensorFields(
+            root.configValue("sensorFields"));
+        var extrasChanged = JSON.stringify(nextExtras)
+            !== JSON.stringify(root.extraList);
+        var fieldsChanged = JSON.stringify(nextFields)
+            !== JSON.stringify(root.sensorFieldList);
+
+        root.extraList = nextExtras;
+        root.sensorFieldList = nextFields;
+
+        if (extrasChanged) {
+            root.sides = null;
+        }
+
+        if (fieldsChanged) {
+            root.sensorColumnWidths = [];
+        }
+    }
+
+    /** Stores one effective value without touching the other settings. */
+    function setSavedValue(key, value) {
+        var next = {};
+        var saved = root.savedConfig || {};
+
+        for (var name in saved) {
+            if (Object.prototype.hasOwnProperty.call(saved, name)) {
+                next[name] = saved[name];
+            }
+        }
+
+        next[key] = value;
+        root.savedConfig = next;
+    }
+
+    /** Four old settings that used to describe the side readings. */
+    function legacyExtraValues(values) {
+        var source = values || {};
+
+        return {
+            "outside": source.outside !== undefined
+                ? source.outside : root.liveConfigValue("outside"),
+            "boilerHeat": source.boilerHeat !== undefined
+                ? source.boilerHeat : root.liveConfigValue("boilerHeat"),
+            "jfConnections": source.jfConnections !== undefined
+                ? source.jfConnections : root.liveConfigValue("jfConnections"),
+            "boilerErrors": source.boilerErrors !== undefined
+                ? source.boilerErrors : root.liveConfigValue("boilerErrors")
+        };
+    }
+
+    /** Upgrades the four old settings to the ordered extraReadings list. */
+    function migrateExtraSettings(values) {
+        var existing = values ? values.extraReadings : undefined;
+
+        if (existing !== undefined && String(existing).trim().length > 0) {
+            return existing;
+        }
+
+        var list = SharedConfig.migrateExtraReadings(
+            legacyExtraValues(values));
+
+        return list.length > 0 ? JSON.stringify(list) : existing;
+    }
+
     /** Makes a setting changed in the applet config win over the file. */
     function rememberConfigChange(key) {
         var next = {};
@@ -122,11 +214,23 @@ PlasmoidItem {
 
     /** Called for a real settings edit after the launch read finished. */
     function applyConfigChange(key) {
-        if (!configReadDone) {
+        if (!configReadDone || applyingDiscovery) {
+            return;
+        }
+
+        var saved = root.savedConfig || {};
+        var live = liveConfigValue(key);
+
+        // Ignore a change that does not differ from the effective setting:
+        // Plasma echoes values that the shared file already supplied, and
+        // discovery updates the applet config itself.
+        if (Object.prototype.hasOwnProperty.call(saved, key)
+                && String(saved[key]) === String(live)) {
             return;
         }
 
         rememberConfigChange(key);
+        refreshDerivedConfig();
         configWriteTimer.restart();
         fetchData();
     }
@@ -138,9 +242,9 @@ PlasmoidItem {
      */
     function syncPlasmaConfiguration(values) {
         var cfg = Plasmoid.configuration;
-        var keys = ["grafanaUrl", "dashboardUrl", "apiToken", "datasourceUid",
-            "bucket", "measurement", "sensors", "outside", "boilerHeat",
-            "jfConnections", "boilerErrors", "refreshSeconds", "bypassProxy"];
+        var keys = ["title", "grafanaUrl", "dashboardUrl", "apiToken",
+            "datasourceUid", "bucket", "measurement", "sensors",
+            "sensorFields", "extraReadings", "refreshSeconds", "bypassProxy"];
 
         for (var i = 0; i < keys.length; i++) {
             if (Object.prototype.hasOwnProperty.call(values, keys[i])) {
@@ -219,8 +323,24 @@ PlasmoidItem {
                     SharedConfig.parseBool(values.bypassProxy, true);
             }
 
+            var migratedExtras = migrateExtraSettings(parsed.values);
+
+            if (migratedExtras !== undefined) {
+                values.extraReadings = migratedExtras;
+            }
+
             savedConfig = values;
             syncPlasmaConfiguration(values);
+            refreshDerivedConfig();
+        } else {
+            var migrated = migrateExtraSettings(null);
+
+            if (migrated !== undefined && String(migrated).trim().length > 0) {
+                setSavedValue("extraReadings", migrated);
+                Plasmoid.configuration.extraReadings = migrated;
+            }
+
+            refreshDerivedConfig();
         }
 
         configReadSucceeded = true;
@@ -255,70 +375,73 @@ PlasmoidItem {
         return Grafana.parseSensorList(configValue("sensors")).names;
     }
 
-    /** Parsed sources for the extra readings; null entries are disabled. */
-    function sideSources() {
-        return {
-            "outside": Grafana.parseSideSource(configValue("outside")),
-            "heat": Grafana.parseSideSource(configValue("boilerHeat")),
-            "jf": Grafana.parseSideSource(configValue("jfConnections")),
-            "errors": Grafana.parseSideSource(configValue("boilerErrors"))
-        };
+    /** Configured sensor columns; empty means discover from the response. */
+    function sensorFields() {
+        return Grafana.parseSensorFields(configValue("sensorFields"));
     }
 
-    /** Reading for one side key, or null when it is not configured/loaded. */
-    function sideReading(key) {
+    /** Ordered extra readings configured in the shared file. */
+    function extraReadings() {
+        return Grafana.parseExtraReadings(configValue("extraReadings"));
+    }
+
+    /** Reading for one extra reading, or null when no data has arrived. */
+    function sideReading(index) {
         var all = root.sides;
 
-        return all && all[key] ? all[key] : null;
+        return all && all.length > index ? all[index] : null;
     }
 
-    /** Display text for one side reading. */
-    function sideText(key) {
-        var reading = root.sideReading(key);
+    /** Display text for one extra reading, using its configured format. */
+    function sideText(index) {
+        var extra = root.extraList[index];
+        var reading = root.sideReading(index);
 
-        if (!reading || reading.missing) {
+        if (!extra || !reading || reading.missing) {
             return "–";
         }
 
-        if (key === "outside") {
-            return Grafana.formatTemperature(reading.value);
-        }
-
-        if (key === "heat") {
-            return Grafana.formatKbtu(reading.value);
-        }
-
-        return Grafana.formatCount(reading.value);
+        return Grafana.formatValue(extra.format, reading.value);
     }
 
     function hasSides() {
-        return root.sideReading("outside") !== null
-            || root.sideReading("heat") !== null
-            || root.sideReading("jf") !== null
-            || root.sideReading("errors") !== null;
+        return root.extraList.length > 0 && root.sides !== null;
     }
 
-    /** Red for active boiler heat/errors, green for Jellyfin connections. */
-    function sideValueColor(key) {
-        var reading = root.sideReading(key);
+    /** Applies each reading's configured colour rule. */
+    function sideValueColor(index) {
+        var extra = root.extraList[index];
+        var reading = root.sideReading(index);
 
-        if (!reading || reading.missing) {
+        if (!extra || !reading || reading.missing) {
             return Kirigami.Theme.textColor;
         }
 
-        if (key === "heat" && Number(reading.value) !== 0) {
+        if (extra.color === "negative" && Number(reading.value) !== 0) {
             return Kirigami.Theme.negativeTextColor;
         }
 
-        if (key === "jf" && Number(reading.value) !== 0) {
+        if (extra.color === "positive" && Number(reading.value) !== 0) {
             return Kirigami.Theme.positiveTextColor;
         }
 
-        if (key === "errors" && Number(reading.value) !== 0) {
-            return Kirigami.Theme.negativeTextColor;
+        return Kirigami.Theme.textColor;
+    }
+
+    /** Keeps the side values aligned with the first sensor row. */
+    function reportColumnWidth(rowIndex, columnIndex, width) {
+        if (rowIndex !== 0 || width <= 0) {
+            return;
         }
 
-        return Kirigami.Theme.textColor;
+        var widths = (root.sensorColumnWidths || []).slice();
+
+        if (widths[columnIndex] === width) {
+            return;
+        }
+
+        widths[columnIndex] = width;
+        root.sensorColumnWidths = widths;
     }
 
     /**
@@ -375,6 +498,7 @@ PlasmoidItem {
 
         pendingCommand = "";
         pendingSides = null;
+        pendingFields = [];
 
         if (command.length > 0) {
             try {
@@ -390,10 +514,11 @@ PlasmoidItem {
 
         var result = Grafana.parseCurlOutput(data, pendingNames,
             Grafana.apiUrl(root.grafanaBaseUrl()),
-            root.pendingSides);
+            root.pendingSides, root.pendingFields);
 
         pendingNames = [];
         root.pendingSides = null;
+        root.pendingFields = [];
 
         // Grafana (or a backend) can briefly answer 5xx; retry a couple of
         // times before showing a hard failure.
@@ -415,7 +540,8 @@ PlasmoidItem {
     function fetchData() {
         var base = grafanaBaseUrl();
         var names = sensorNames();
-        var sides = sideSources();
+        var extras = extraReadings();
+        var fields = sensorFields();
 
         if (base.length === 0) {
             abortRequest();
@@ -461,20 +587,136 @@ PlasmoidItem {
             "bucket": configValue("bucket"),
             "measurement": configValue("measurement"),
             "names": names,
-            "sides": sides,
+            "fields": fields,
+            "extras": extras,
             "token": token,
             "bypassProxy": configValue("bypassProxy")
         });
 
         pendingCommand = command;
         pendingNames = names;
-        pendingSides = sides;
+        pendingSides = extras;
+        pendingFields = fields;
         loading = true;
         errorText = "";
 
         // The executable engine runs curl via /bin/sh; the command strips
         // proxy variables and LD_PRELOAD (proxychains) before connecting.
         executableSource.connectSource(command);
+    }
+
+    /**
+     * Fetches every sensor name in the bucket and saves the result. Labels
+     * already present in Sensor names are kept; names that are configured but
+     * absent from this response stay in the list so a sleeping sensor is not
+     * silently dropped.
+     */
+    function discoverSensors() {
+        var base = grafanaBaseUrl();
+
+        if (!configReadDone || discovering) {
+            return;
+        }
+
+        if (base.length === 0 || Grafana.isPublicDashboardUrl(base)) {
+            fetchData();
+            return;
+        }
+
+        var token = String(configValue("apiToken") || "").trim();
+
+        if (/^[0-9a-f]{32}$/i.test(token)) {
+            fetchData();
+            return;
+        }
+
+        abortRequest();
+
+        var command = Grafana.buildCurlCommand({
+            "grafanaUrl": base,
+            "datasourceUid": configValue("datasourceUid"),
+            "bucket": configValue("bucket"),
+            "measurement": configValue("measurement"),
+            "names": [],
+            "fields": [],
+            "extras": [],
+            "token": token,
+            "bypassProxy": configValue("bypassProxy")
+        });
+
+        pendingDiscoverCommand = command;
+        discovering = true;
+        errorText = "";
+        discoverSource.connectSource(command);
+    }
+
+    function applyDiscovery(data) {
+        var result = Grafana.parseCurlOutput(data, [],
+            Grafana.apiUrl(root.grafanaBaseUrl()), [], []);
+
+        if (result.error.length > 0) {
+            errorText = result.error;
+            fetchData();
+            return;
+        }
+
+        var discovered = [];
+
+        for (var i = 0; i < result.rows.length; i++) {
+            var name = String(result.rows[i].name || "");
+
+            if (name.length > 0 && name !== "TEST"
+                    && discovered.indexOf(name) < 0) {
+                discovered.push(name);
+            }
+        }
+
+        if (discovered.length === 0) {
+            errorText = i18n("No sensors found in the configured bucket and"
+                + " measurement.");
+            fetchData();
+            return;
+        }
+
+        discovered.sort();
+
+        var current = Grafana.parseSensorList(configValue("sensors"));
+        var names = current.names.slice();
+
+        for (var j = 0; j < discovered.length; j++) {
+            if (names.indexOf(discovered[j]) < 0) {
+                names.push(discovered[j]);
+            }
+        }
+
+        var entries = [];
+
+        for (var k = 0; k < names.length; k++) {
+            entries.push(Object.prototype.hasOwnProperty.call(current.labels,
+                names[k]) ? names[k] + "=" + current.labels[names[k]]
+                : names[k]);
+        }
+
+        var fields = Grafana.deriveSensorFields(result.rows,
+            Grafana.parseSensorFields(configValue("sensorFields")));
+        var next = {
+            "sensors": entries.join(","),
+            "sensorFields": JSON.stringify(fields)
+        };
+
+        setSavedValue("sensors", next.sensors);
+        setSavedValue("sensorFields", next.sensorFields);
+
+        // Plasma's copy keeps the Configure dialog in step. Its change
+        // handlers are skipped here so discovery saves and refreshes once.
+        applyingDiscovery = true;
+        Plasmoid.configuration.sensors = next.sensors;
+        Plasmoid.configuration.sensorFields = next.sensorFields;
+        applyingDiscovery = false;
+
+        refreshDerivedConfig();
+        configWriteTimer.restart();
+        fetchData();
     }
 
     P5Support.DataSource {
@@ -490,6 +732,23 @@ PlasmoidItem {
             root.pendingCommand = "";
             executableSource.disconnectSource(sourceName);
             root.handleResponse(data);
+        }
+    }
+
+    P5Support.DataSource {
+        id: discoverSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: function (sourceName, data) {
+            if (sourceName !== root.pendingDiscoverCommand) {
+                return;
+            }
+
+            root.pendingDiscoverCommand = "";
+            discoverSource.disconnectSource(sourceName);
+            root.discovering = false;
+            root.applyDiscovery(data);
         }
     }
 
@@ -532,13 +791,20 @@ PlasmoidItem {
         }
     }
 
-    Component.onCompleted: Qt.callLater(root.readSharedConfig)
+    Component.onCompleted: {
+        root.refreshDerivedConfig();
+        Qt.callLater(root.readSharedConfig);
+    }
 
     Connections {
         target: Plasmoid.configuration
 
         // Changes before the file has been read are Plasma populating the
         // applet, not edits. Let the read decide which values win.
+        function onTitleChanged() {
+            root.applyConfigChange("title");
+        }
+
         function onGrafanaUrlChanged() {
             root.applyConfigChange("grafanaUrl");
         }
@@ -565,6 +831,14 @@ PlasmoidItem {
 
         function onSensorsChanged() {
             root.applyConfigChange("sensors");
+        }
+
+        function onSensorFieldsChanged() {
+            root.applyConfigChange("sensorFields");
+        }
+
+        function onExtraReadingsChanged() {
+            root.applyConfigChange("extraReadings");
         }
 
         function onOutsideChanged() {
@@ -690,7 +964,8 @@ PlasmoidItem {
                 spacing: Kirigami.Units.smallSpacing
 
                 PlasmaComponents3.Label {
-                    text: i18n("SensorBridge")
+                    text: String(root.configValue("title")
+                        || Plasmoid.title || "")
                     font.bold: true
                     font.pointSize:
                         Kirigami.Theme.defaultFont.pointSize * 1.1
@@ -698,15 +973,31 @@ PlasmoidItem {
                 }
 
                 PlasmaComponents3.BusyIndicator {
-                    visible: root.loading
-                    running: root.loading
+                    visible: root.loading || root.discovering
+                    running: root.loading || root.discovering
                     implicitWidth: Kirigami.Units.iconSizes.small
                     implicitHeight: Kirigami.Units.iconSizes.small
                 }
 
                 PlasmaComponents3.ToolButton {
+                    icon.name: "edit-find"
+                    Accessible.name: i18n("Discover sensors")
+                    QQC2.ToolTip.text: i18n("Discover every sensor and save"
+                        + " the list to the settings")
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.delay: 500
+                    enabled: root.configReadDone && !root.loading
+                        && !root.discovering
+                    onClicked: root.discoverSensors()
+                }
+
+                PlasmaComponents3.ToolButton {
                     icon.name: "view-refresh"
-                    enabled: !root.loading
+                    Accessible.name: i18n("Refresh")
+                    QQC2.ToolTip.text: i18n("Refresh")
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.delay: 500
+                    enabled: !root.loading && !root.discovering
                     onClicked: root.fetchData()
                 }
             }
@@ -729,47 +1020,20 @@ PlasmoidItem {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.largeSpacing
 
-                    Metric {
-                        Layout.preferredWidth: root.sideColumnWidth(
-                            0, implicitWidth)
-                        value: root.sideReading("outside") !== null
-                            ? root.sideText("outside") : ""
-                        label: root.sideReading("outside") !== null
-                            ? i18n("Outside") : ""
-                    }
+                    Repeater {
+                        model: root.extraList
 
-                    Metric {
-                        Layout.preferredWidth: root.sideColumnWidth(
-                            1, implicitWidth)
-                        value: root.sideReading("heat") !== null
-                            ? root.sideText("heat") : ""
-                        valueColor: root.sideValueColor("heat")
-                        label: root.sideReading("heat") !== null
-                            ? i18n("High Mass Ht.") : ""
-                    }
-
-                    Metric {
-                        Layout.preferredWidth: root.sideColumnWidth(
-                            2, implicitWidth)
-                        value: root.sideReading("errors") !== null
-                            ? root.sideText("errors") : ""
-                        valueColor: root.sideValueColor("errors")
-                        valueAlignment: Qt.AlignRight
-                        labelAlignment: Qt.AlignRight
-                        label: root.sideReading("errors") !== null
-                            ? i18n("Errors") : ""
-                    }
-
-                    Metric {
-                        Layout.preferredWidth: root.sideColumnWidth(
-                            3, implicitWidth)
-                        value: root.sideReading("jf") !== null
-                            ? root.sideText("jf") : ""
-                        valueColor: root.sideValueColor("jf")
-                        valueAlignment: Qt.AlignRight
-                        labelAlignment: Qt.AlignRight
-                        label: root.sideReading("jf") !== null
-                            ? i18n("Connects") : ""
+                        delegate: Metric {
+                            Layout.preferredWidth: root.sideColumnWidth(
+                                index, implicitWidth)
+                            value: root.sideText(index)
+                            valueColor: root.sideValueColor(index)
+                            valueAlignment: modelData.align === "right"
+                                ? Qt.AlignRight : Qt.AlignLeft
+                            labelAlignment: modelData.align === "right"
+                                ? Qt.AlignRight : Qt.AlignLeft
+                            label: modelData.label
+                        }
                     }
 
                     Item {
@@ -790,29 +1054,12 @@ PlasmoidItem {
                 model: root.readings
 
                 delegate: ColumnLayout {
+                    id: sensorRow
+
+                    property int rowIndex: index
+
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
-
-                    // Widths of this row's four value columns, reported to the
-                    // side readings so both rows use the same column starts.
-                    property var columnWidths: [
-                        temperatureMetric.implicitWidth,
-                        humidityMetric.implicitWidth,
-                        dewMetric.implicitWidth,
-                        batteryMetric.implicitWidth
-                    ]
-
-                    onColumnWidthsChanged: {
-                        if (index === 0) {
-                            root.sensorColumnWidths = columnWidths;
-                        }
-                    }
-
-                    Component.onCompleted: {
-                        if (index === 0) {
-                            root.sensorColumnWidths = columnWidths;
-                        }
-                    }
 
                     Rectangle {
                         visible: index > 0
@@ -847,37 +1094,23 @@ PlasmoidItem {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.largeSpacing
 
-                        Metric {
-                            id: temperatureMetric
-                            value: Grafana.formatTemperature(
-                                modelData.temperature)
-                            label: i18n("Temperature")
-                        }
+                        Repeater {
+                            model: modelData.columns
 
-                        Metric {
-                            id: humidityMetric
-                            value: Grafana.formatHumidity(
-                                modelData.humidity)
-                            label: i18n("Humidity")
-                        }
+                            delegate: Metric {
+                                value: Grafana.formatValue(
+                                    modelData.format, modelData.value)
+                                label: modelData.label
+                                valueAlignment: modelData.align === "right"
+                                    ? Qt.AlignRight : Qt.AlignLeft
+                                labelAlignment: modelData.align === "right"
+                                    ? Qt.AlignRight : Qt.AlignLeft
 
-                        Metric {
-                            id: dewMetric
-                            value: Grafana.formatTemperature(
-                                Grafana.dewPoint(modelData.temperature,
-                                    modelData.humidity))
-                            valueAlignment: Qt.AlignRight
-                            labelAlignment: Qt.AlignRight
-                            label: i18n("Dew point")
-                        }
-
-                        Metric {
-                            id: batteryMetric
-                            value: Grafana.formatBattery(
-                                modelData.battery)
-                            valueAlignment: Qt.AlignRight
-                            labelAlignment: Qt.AlignRight
-                            label: i18n("Battery")
+                                Component.onCompleted: root.reportColumnWidth(
+                                    sensorRow.rowIndex, index, implicitWidth)
+                                onImplicitWidthChanged: root.reportColumnWidth(
+                                    sensorRow.rowIndex, index, implicitWidth)
+                            }
                         }
 
                         Item {

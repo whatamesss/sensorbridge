@@ -1,19 +1,101 @@
 .pragma library
 
-var FIELDS = ["temperature", "humidity", "battery"];
+/*
+ * Grafana/Flux helpers for the SensorBridge widget.
+ *
+ * The widget's config describes the data: sensor names, sensor columns, and
+ * an ordered list of extra single-value readings. Nothing about a particular
+ * measurement, sensor or label is built into this file.
+ */
 
-// Extra single-value readings shown above the sensors. Each has its own
-// configurable source; the order here is also the query refId order (B-E).
-var SIDE_KEYS = ["outside", "heat", "jf", "errors"];
-var SIDE_REFIDS = {
-    "outside": "B", "heat": "C", "jf": "D", "errors": "E"
-};
+// Values accepted by the `format` field of sensorFields/extraReadings.
+var FORMATS = ["temperature", "humidity", "battery", "kbtu", "count", "raw"];
+
+// Values accepted by the `color` field of an extra reading.
+var COLORS = ["none", "negative", "positive"];
+
+var ALIGNMENTS = ["left", "right"];
+
+/** "outdoor_c" / "dewPoint" -> "Outdoor C" / "Dew Point". */
+function humanizeField(name) {
+    var text = String(name === null || name === undefined ? "" : name)
+        .trim();
+    var words;
+    var i;
+
+    if (text.length === 0) {
+        return "";
+    }
+
+    text = text.replace(/[_.\-]+/g, " ");
+    text = text.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+    words = text.split(/\s+/);
+
+    for (i = 0; i < words.length; i++) {
+        if (words[i].length > 0) {
+            words[i] = words[i].charAt(0).toUpperCase()
+                + words[i].substring(1);
+        }
+    }
+
+    return words.join(" ");
+}
+
+/** Best-effort format for a field when the config does not name one. */
+function inferFormat(field) {
+    var key = String(field === null || field === undefined ? "" : field)
+        .toLowerCase();
+
+    if (key === "dewpoint" || key.indexOf("dew") === 0) {
+        return "temperature";
+    }
+
+    if (key.indexOf("humidity") >= 0) {
+        return "humidity";
+    }
+
+    if (key.indexOf("battery") >= 0 || key === "batt") {
+        return "battery";
+    }
+
+    if (key.indexOf("temp") >= 0 || /_[cf]$/.test(key)) {
+        return "temperature";
+    }
+
+    if (key.indexOf("btu") >= 0) {
+        return "kbtu";
+    }
+
+    return "raw";
+}
+
+/** Normalises a configured format, falling back to the field's guess. */
+function normalizeFormat(value, field) {
+    var text = String(value === null || value === undefined ? "" : value)
+        .trim().toLowerCase();
+
+    return FORMATS.indexOf(text) >= 0 ? text : inferFormat(field);
+}
+
+function normalizeColor(value) {
+    var text = String(value === null || value === undefined ? "" : value)
+        .trim().toLowerCase();
+
+    return COLORS.indexOf(text) >= 0 ? text : "none";
+}
+
+function normalizeAlign(value) {
+    var text = String(value === null || value === undefined ? "" : value)
+        .trim().toLowerCase();
+
+    return text === "right" || text === "end" ? "right" : "left";
+}
 
 /**
  * Parses the Sensor names setting. Each entry is the raw `name` tag, optionally
  * followed by `=Label` to set the display label:
- * "GVH5075_B6D2=House, GVH5075_E22C". Only the part before `=` is queried, so a
- * label can never turn into a sensor name that matches nothing in InfluxDB.
+ * "sensor-a=House, sensor-b". Only the part before `=` is queried, so a label
+ * can never turn into a sensor name that matches nothing in InfluxDB.
  * Returns the unique names in configured order and a name-to-label map.
  */
 function parseSensorList(raw) {
@@ -103,6 +185,200 @@ function parseSideSource(raw) {
     };
 }
 
+/**
+ * Parses the JSON `extraReadings` setting:
+ *
+ *   [{"label":"Outside","source":"m|tag=v|field",
+ *     "format":"temperature","color":"none","align":"left"}]
+ *
+ * A bare string source is accepted too. Invalid sources are dropped instead
+ * of sending a broken query. The returned entries carry both the original
+ * source text (for the Configure editor) and the parsed source (for queries).
+ */
+function parseExtraReadings(raw) {
+    var text = String(raw === null || raw === undefined ? "" : raw).trim();
+    var list;
+    var extras = [];
+
+    if (text.length === 0) {
+        return extras;
+    }
+
+    try {
+        list = JSON.parse(text);
+    } catch (e) {
+        return extras;
+    }
+
+    if (!list || typeof list.length !== "number") {
+        return extras;
+    }
+
+    for (var i = 0; i < list.length; i++) {
+        var item = list[i];
+        var sourceText = "";
+        var label = "";
+        var format = "";
+        var color = "";
+        var align = "";
+
+        if (typeof item === "string") {
+            sourceText = item;
+        } else if (item && typeof item === "object") {
+            sourceText = String(item.source === undefined
+                || item.source === null ? "" : item.source).trim();
+            label = String(item.label === undefined
+                || item.label === null ? "" : item.label).trim();
+            format = String(item.format === undefined
+                || item.format === null ? "" : item.format).trim();
+            color = String(item.color === undefined
+                || item.color === null ? "" : item.color).trim();
+            align = String(item.align === undefined
+                || item.align === null ? "" : item.align).trim();
+        } else {
+            continue;
+        }
+
+        var source = parseSideSource(sourceText);
+
+        if (!source) {
+            continue;
+        }
+
+        extras.push({
+            "label": label.length > 0 ? label : humanizeField(source.field),
+            "sourceText": sourceText,
+            "source": source,
+            "format": normalizeFormat(format, source.field),
+            "color": normalizeColor(color),
+            "align": normalizeAlign(align)
+        });
+    }
+
+    return extras;
+}
+
+/**
+ * Parses the JSON `sensorFields` setting. Each entry describes one column of
+ * a sensor row. `field` may be `dewPoint`, which is derived from the
+ * temperature and humidity fields rather than queried. An empty array means
+ * "use every numeric field the datasource returns".
+ */
+function parseSensorFields(raw) {
+    var text = String(raw === null || raw === undefined ? "" : raw).trim();
+    var list;
+    var fields = [];
+    var seen = {};
+
+    if (text.length === 0) {
+        return fields;
+    }
+
+    try {
+        list = JSON.parse(text);
+    } catch (e) {
+        return fields;
+    }
+
+    if (!list || typeof list.length !== "number") {
+        return fields;
+    }
+
+    for (var i = 0; i < list.length; i++) {
+        var item = list[i];
+        var field = "";
+        var label = "";
+        var format = "";
+        var align = "";
+
+        if (typeof item === "string") {
+            field = item.trim();
+        } else if (item && typeof item === "object") {
+            field = String(item.field === undefined
+                || item.field === null ? "" : item.field).trim();
+            label = String(item.label === undefined
+                || item.label === null ? "" : item.label).trim();
+            format = String(item.format === undefined
+                || item.format === null ? "" : item.format).trim();
+            align = String(item.align === undefined
+                || item.align === null ? "" : item.align).trim();
+        } else {
+            continue;
+        }
+
+        if (field.length === 0 || seen[field.toLowerCase()]) {
+            continue;
+        }
+
+        seen[field.toLowerCase()] = true;
+        fields.push({
+            "field": field,
+            "label": label.length > 0 ? label : humanizeField(field),
+            "format": normalizeFormat(format, field),
+            "align": normalizeAlign(align)
+        });
+    }
+
+    return fields;
+}
+
+/**
+ * Turns the fields found in the response into a sensorFields list, preserving
+ * any columns the user already configured. Dew point is appended when both
+ * temperature and humidity are present.
+ */
+function deriveSensorFields(rows, existing) {
+    var fields = [];
+    var known = {};
+    var seen = {};
+    var i;
+    var j;
+
+    for (i = 0; existing && i < existing.length; i++) {
+        fields.push({
+            "field": existing[i].field,
+            "label": existing[i].label,
+            "format": existing[i].format,
+            "align": existing[i].align
+        });
+        known[existing[i].field.toLowerCase()] = true;
+    }
+
+    for (i = 0; rows && i < rows.length; i++) {
+        var rowFields = rows[i].fields || [];
+
+        for (j = 0; j < rowFields.length; j++) {
+            var name = rowFields[j];
+            var key = name.toLowerCase();
+
+            if (known[key] || seen[key]) {
+                continue;
+            }
+
+            seen[key] = true;
+            fields.push({
+                "field": name,
+                "label": humanizeField(name),
+                "format": inferFormat(name),
+                "align": "left"
+            });
+        }
+    }
+
+    if ((known.temperature || seen.temperature)
+            && (known.humidity || seen.humidity)
+            && !known.dewpoint && !seen.dewpoint) {
+        fields.push({
+            "field": "dewPoint",
+            "label": humanizeField("dewPoint"),
+            "format": "temperature",
+            "align": "left"
+        });
+    }
+
+    return fields;
+}
+
 /** Escapes a value for use inside a double-quoted Flux string. */
 function escapeFlux(value) {
     return String(value === null || value === undefined ? "" : value)
@@ -110,21 +386,45 @@ function escapeFlux(value) {
         .replace(/"/g, "\\\"");
 }
 
-/** Flux that returns the newest temperature/humidity/battery point per name. */
-function buildFlux(bucket, measurement, names) {
+/**
+ * Flux that returns the newest point per name. With configured fields it
+ * filters and keeps just those fields; with none it returns every field so
+ * the widget can discover the columns.
+ */
+function buildFlux(bucket, measurement, names, fields) {
+    var queryFields = [];
     var lines = [
         "from(bucket: \"" + escapeFlux(bucket) + "\")",
         "  |> range(start: -24h)",
-        "  |> filter(fn: (r) => r._measurement == \"" + escapeFlux(measurement) + "\")",
-        "  |> filter(fn: (r) => r._field == \"temperature\""
-            + " or r._field == \"humidity\" or r._field == \"battery\")"
+        "  |> filter(fn: (r) => r._measurement == \""
+            + escapeFlux(measurement) + "\")"
     ];
+
+    for (var i = 0; fields && i < fields.length; i++) {
+        var field = String(fields[i].field === undefined
+            ? fields[i] : fields[i].field);
+
+        if (field.toLowerCase() !== "dewpoint") {
+            queryFields.push(field);
+        }
+    }
+
+    if (queryFields.length > 0) {
+        var fieldFilters = [];
+
+        for (var j = 0; j < queryFields.length; j++) {
+            fieldFilters.push("r._field == \"" + escapeFlux(queryFields[j])
+                + "\"");
+        }
+
+        lines.push("  |> filter(fn: (r) => " + fieldFilters.join(" or ") + ")");
+    }
 
     if (names && names.length > 0) {
         var filters = [];
 
-        for (var i = 0; i < names.length; i++) {
-            filters.push("r.name == \"" + escapeFlux(names[i]) + "\"");
+        for (var k = 0; k < names.length; k++) {
+            filters.push("r.name == \"" + escapeFlux(names[k]) + "\"");
         }
 
         lines.push("  |> filter(fn: (r) => " + filters.join(" or ") + ")");
@@ -135,8 +435,16 @@ function buildFlux(bucket, measurement, names) {
         + " valueColumn: \"_value\")");
     lines.push("  |> sort(columns: [\"_time\"])");
     lines.push("  |> tail(n: 1)");
-    lines.push("  |> keep(columns: [\"name\", \"_time\", \"temperature\","
-        + " \"humidity\", \"battery\"])");
+
+    if (queryFields.length > 0) {
+        var kept = ["\"name\"", "\"_time\""];
+
+        for (var m = 0; m < queryFields.length; m++) {
+            kept.push("\"" + escapeFlux(queryFields[m]) + "\"");
+        }
+
+        lines.push("  |> keep(columns: [" + kept.join(", ") + "])");
+    }
 
     return lines.join("\n");
 }
@@ -166,6 +474,21 @@ function buildSideFlux(bucket, source) {
     return lines.join("\n");
 }
 
+/** Query refId for extra reading `index`: B, C, ... Z, AA, AB, ... */
+function refIdFor(index) {
+    var n = index + 2;
+    var id = "";
+
+    while (n > 0) {
+        var remainder = (n - 1) % 26;
+
+        id = String.fromCharCode(65 + remainder) + id;
+        n = Math.floor((n - 1) / 26);
+    }
+
+    return id;
+}
+
 /** Body for Grafana's /api/ds/query endpoint. */
 function queryBody(options) {
     var datasource = {
@@ -176,28 +499,27 @@ function queryBody(options) {
         "refId": "A",
         "datasource": datasource,
         "query": buildFlux(options.bucket, options.measurement,
-            options.names || []),
+            options.names || [], options.fields || []),
         "rawQuery": true,
         "resultFormat": "time_series"
     }];
+    var extras = options.extras || [];
 
-    if (options.sides) {
-        for (var i = 0; i < SIDE_KEYS.length; i++) {
-            var key = SIDE_KEYS[i];
-            var source = options.sides[key];
+    for (var i = 0; i < extras.length; i++) {
+        var source = extras[i] && extras[i].source
+            ? extras[i].source : extras[i];
 
-            if (!source) {
-                continue;
-            }
-
-            queries.push({
-                "refId": SIDE_REFIDS[key],
-                "datasource": datasource,
-                "query": buildSideFlux(options.bucket, source),
-                "rawQuery": true,
-                "resultFormat": "time_series"
-            });
+        if (!source || !source.measurement) {
+            continue;
         }
+
+        queries.push({
+            "refId": refIdFor(i),
+            "datasource": datasource,
+            "query": buildSideFlux(options.bucket, source),
+            "rawQuery": true,
+            "resultFormat": "time_series"
+        });
     }
 
     return {
@@ -322,7 +644,7 @@ function buildCurlCommand(options) {
  * curl's -w adds the HTTP status, the peer it actually talked to and the
  * response content type as the last line of stdout.
  */
-function parseCurlOutput(data, configuredNames, url, sides) {
+function parseCurlOutput(data, configuredNames, url, extras, fields) {
     var stdout = String(data && data.stdout !== undefined ? data.stdout : "");
     var stderr = String(data && data.stderr !== undefined ? data.stderr : "")
         .trim();
@@ -343,7 +665,7 @@ function parseCurlOutput(data, configuredNames, url, sides) {
             "error": message,
             "rows": [],
             "status": 0,
-            "sides": missingSides(sides)
+            "sides": missingSides(extras)
         };
     }
 
@@ -355,7 +677,8 @@ function parseCurlOutput(data, configuredNames, url, sides) {
         "remote": remote,
         "url": url || ""
     };
-    var result = parseResponse(status, body, configuredNames, context, sides);
+    var result = parseResponse(status, body, configuredNames, context, extras,
+        fields);
 
     result.status = status;
 
@@ -462,11 +785,15 @@ function httpError(status, payload, text, context) {
  * Converts a /api/ds/query response into widget rows, in the order the
  * sensors are configured. A configured sensor without a recent point is kept
  * as a "missing" row so the widget does not silently hide a dead sensor.
- * `sides` maps each configured extra reading to its parsed source; the same
- * "missing" treatment applies to the readings returned by queries B through E.
+ * When no sensors are configured every name found in the response is shown,
+ * which is what discovery uses.
+ *
+ * `extras` is the ordered list from parseExtraReadings; `sides` in the result
+ * is a parallel array of readings. `fields` is the sensorFields list; with an
+ * empty list the columns are discovered from the response.
  */
-function parseResponse(status, text, configuredNames, context, sides) {
-    var noSides = missingSides(sides);
+function parseResponse(status, text, configuredNames, context, extras, fields) {
+    var noSides = missingSides(extras);
 
     if (status === 0) {
         return {
@@ -503,7 +830,7 @@ function parseResponse(status, text, configuredNames, context, sides) {
         };
     }
 
-    var readings = sidesFromResults(payload, sides);
+    var readings = sidesFromResults(payload, extras);
     var result = payload && payload.results ? payload.results.A : null;
 
     if (!result) {
@@ -530,7 +857,7 @@ function parseResponse(status, text, configuredNames, context, sides) {
     var found = {};
 
     for (var i = 0; i < frames.length; i++) {
-        var row = rowFromFrame(frames[i]);
+        var row = rowFromFrame(frames[i], fields);
 
         // The test button publishes under this name; never show it as a sensor.
         if (!row || row.name === "TEST") {
@@ -548,7 +875,7 @@ function parseResponse(status, text, configuredNames, context, sides) {
     var rows = [];
 
     for (var j = 0; j < names.length; j++) {
-        rows.push(found[names[j]] || missingRow(names[j]));
+        rows.push(found[names[j]] || missingRow(names[j], fields));
     }
 
     if (names.length === 0) {
@@ -559,7 +886,100 @@ function parseResponse(status, text, configuredNames, context, sides) {
         }
     }
 
+    columnsFor(rows, fields);
+
     return {"error": "", "rows": rows, "sides": readings};
+}
+
+/**
+ * Builds each row's display columns. Configured fields keep their order and
+ * labels; otherwise the fields returned by the datasource are used, with a
+ * derived dew point when temperature and humidity are both present.
+ */
+function columnsFor(rows, configuredFields) {
+    var defs = [];
+    var seen = {};
+    var i;
+    var j;
+
+    if (configuredFields && configuredFields.length > 0) {
+        for (i = 0; i < configuredFields.length; i++) {
+            defs.push({
+                "field": configuredFields[i].field,
+                "label": configuredFields[i].label,
+                "format": configuredFields[i].format,
+                "align": configuredFields[i].align || "left"
+            });
+        }
+    } else {
+        for (i = 0; rows && i < rows.length; i++) {
+            var rowFields = rows[i].fields || [];
+
+            for (j = 0; j < rowFields.length; j++) {
+                var name = rowFields[j];
+                var key = name.toLowerCase();
+
+                if (seen[key]) {
+                    continue;
+                }
+
+                seen[key] = true;
+                defs.push({
+                    "field": name,
+                    "label": humanizeField(name),
+                    "format": inferFormat(name),
+                    "align": "left"
+                });
+            }
+        }
+
+        if (seen.temperature && seen.humidity && !seen.dewpoint) {
+            defs.push({
+                "field": "dewPoint",
+                "label": humanizeField("dewPoint"),
+                "format": "temperature",
+                "align": "left"
+            });
+        }
+    }
+
+    for (i = 0; rows && i < rows.length; i++) {
+        var columns = [];
+
+        for (j = 0; j < defs.length; j++) {
+            columns.push({
+                "field": defs[j].field,
+                "label": defs[j].label,
+                "format": defs[j].format,
+                "align": defs[j].align,
+                "value": valueForField(rows[i], defs[j].field)
+            });
+        }
+
+        rows[i].columns = columns;
+    }
+
+    return defs;
+}
+
+function valueForField(row, field) {
+    var value;
+
+    if (String(field).toLowerCase() === "dewpoint") {
+        value = row.values ? row.values.dewPoint : null;
+
+        if (value === undefined || value === null) {
+            value = row.values
+                ? dewPoint(row.values.temperature, row.values.humidity)
+                : null;
+        }
+
+        return value === undefined ? null : value;
+    }
+
+    value = row.values ? row.values[field] : null;
+
+    return value === undefined ? null : value;
 }
 
 /**
@@ -567,19 +987,15 @@ function parseResponse(status, text, configuredNames, context, sides) {
  * the sensor rows intact and shows that reading as "no data".
  */
 function sidesFromResults(payload, configured) {
-    var readings = {};
+    var readings = [];
 
-    for (var i = 0; i < SIDE_KEYS.length; i++) {
-        var key = SIDE_KEYS[i];
-        var source = configured ? configured[key] : null;
+    if (!configured || typeof configured.length !== "number") {
+        return readings;
+    }
 
-        if (!source) {
-            readings[key] = null;
-            continue;
-        }
-
+    for (var i = 0; i < configured.length; i++) {
         var result = payload && payload.results
-            ? payload.results[SIDE_REFIDS[key]] : null;
+            ? payload.results[refIdFor(i)] : null;
         var frames = result && !result.error ? result.frames || [] : [];
         var reading = null;
 
@@ -587,7 +1003,7 @@ function sidesFromResults(payload, configured) {
             reading = readingFromFrame(frames[j]);
         }
 
-        readings[key] = reading || missingReading();
+        readings.push(reading || missingReading());
     }
 
     return readings;
@@ -654,21 +1070,22 @@ function missingReading() {
     };
 }
 
-/** One entry per side key; null marks a reading that is not configured. */
+/** One entry per configured extra reading; null marks a disabled reading. */
 function missingSides(configured) {
-    var readings = {};
+    var readings = [];
 
-    for (var i = 0; i < SIDE_KEYS.length; i++) {
-        var key = SIDE_KEYS[i];
+    if (!configured) {
+        return readings;
+    }
 
-        readings[key] = configured && configured[key]
-            ? missingReading() : null;
+    for (var i = 0; i < configured.length; i++) {
+        readings.push(missingReading());
     }
 
     return readings;
 }
 
-function rowFromFrame(frame) {
+function rowFromFrame(frame, configuredFields) {
     var schema = frame && frame.schema;
     var data = frame && frame.data;
 
@@ -679,16 +1096,25 @@ function rowFromFrame(frame) {
     var fields = schema.fields;
     var columns = data.values;
     var index = {};
+    var exact = {};
+    var order = [];
     var name = "";
 
     for (var i = 0; i < fields.length; i++) {
         var field = fields[i] || {};
-        var key = String(field.name || "").toLowerCase();
+        var fieldName = String(field.name || "");
+        var key = fieldName.toLowerCase();
 
         index[key] = i;
+        exact[fieldName] = i;
 
         if (!name && field.labels && field.labels.name) {
             name = String(field.labels.name);
+        }
+
+        if (fieldName.length > 0 && key !== "time" && key !== "_time"
+                && key !== "name") {
+            order.push(fieldName);
         }
     }
 
@@ -705,24 +1131,64 @@ function rowFromFrame(frame) {
         return null;
     }
 
+    var values = {};
+    var used = [];
+
+    if (configuredFields && configuredFields.length > 0) {
+        for (var j = 0; j < configuredFields.length; j++) {
+            var configured = configuredFields[j];
+            var configuredKey = String(configured.field).toLowerCase();
+
+            if (configuredKey === "dewpoint") {
+                values[configured.field] = null;
+                continue;
+            }
+
+            var column = exact[configured.field] !== undefined
+                ? exact[configured.field] : index[configuredKey];
+
+            values[configured.field] = numberOrNull(columns, column);
+            used.push(configured.field);
+        }
+
+        if (values.dewPoint !== undefined || hasDewPoint(configuredFields)) {
+            values.dewPoint = dewPoint(values.temperature, values.humidity);
+        }
+    } else {
+        for (var k = 0; k < order.length; k++) {
+            var orderKey = order[k].toLowerCase();
+            var value = numberOrNull(columns, index[orderKey]);
+
+            if (value !== null) {
+                values[order[k]] = value;
+                used.push(order[k]);
+            }
+        }
+    }
+
     var row = {
         "name": name,
-        "temperature": numberOrNull(columns, index["temperature"]),
-        "humidity": numberOrNull(columns, index["humidity"]),
-        "battery": numberOrNull(columns, index["battery"]),
+        "values": values,
+        "fields": used,
         "timestamp": timeIndex === undefined
             ? 0
             : toMillis(lastValue(columns[timeIndex])),
-        "missing": false
+        "missing": valuesMissing(values)
     };
 
-    if (row.temperature === null && row.humidity === null
-            && row.battery === null) {
-        row.missing = true;
-        row.timestamp = 0;
-    }
+    copyValues(row, values);
 
     return row;
+}
+
+function hasDewPoint(fields) {
+    for (var i = 0; fields && i < fields.length; i++) {
+        if (String(fields[i].field).toLowerCase() === "dewpoint") {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function numberOrNull(columns, columnIndex) {
@@ -778,15 +1244,26 @@ function toMillis(value) {
     return 0;
 }
 
-function missingRow(name) {
-    return {
+function missingRow(name, fields) {
+    var values = {};
+    var used = [];
+
+    for (var i = 0; fields && i < fields.length; i++) {
+        values[fields[i].field] = null;
+        used.push(fields[i].field);
+    }
+
+    var row = {
         "name": name,
-        "temperature": null,
-        "humidity": null,
-        "battery": null,
+        "values": values,
+        "fields": used,
         "timestamp": 0,
         "missing": true
     };
+
+    copyValues(row, values);
+
+    return row;
 }
 
 /**
@@ -794,19 +1271,45 @@ function missingRow(name) {
  * datasource splits them instead of returning one pivoted table per name.
  */
 function mergeRow(target, source) {
-    var fields = ["temperature", "humidity", "battery"];
+    var key;
 
-    for (var i = 0; i < fields.length; i++) {
-        var key = fields[i];
+    for (key in source.values) {
+        if (Object.prototype.hasOwnProperty.call(source.values, key)
+                && (target.values[key] === null
+                    || target.values[key] === undefined)
+                && source.values[key] !== null) {
+            target.values[key] = source.values[key];
+        }
+    }
 
-        if (target[key] === null && source[key] !== null) {
-            target[key] = source[key];
+    for (var i = 0; i < source.fields.length; i++) {
+        if (target.fields.indexOf(source.fields[i]) < 0) {
+            target.fields.push(source.fields[i]);
         }
     }
 
     target.timestamp = Math.max(target.timestamp, source.timestamp);
-    target.missing = target.temperature === null
-        && target.humidity === null && target.battery === null;
+    target.missing = valuesMissing(target.values);
+    copyValues(target, target.values);
+}
+
+function copyValues(row, values) {
+    for (var key in values) {
+        if (Object.prototype.hasOwnProperty.call(values, key)) {
+            row[key] = values[key];
+        }
+    }
+}
+
+function valuesMissing(values) {
+    for (var key in values) {
+        if (Object.prototype.hasOwnProperty.call(values, key)
+                && values[key] !== null && values[key] !== undefined) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /**
@@ -832,6 +1335,34 @@ function dewPoint(temperature, humidity) {
     var gamma = Math.log(rh / 100) + (b * t) / (c + t);
 
     return (c * gamma) / (b - gamma);
+}
+
+/** Formats a value according to one of the FORMATS entries. */
+function formatValue(format, value) {
+    var name = String(format === null || format === undefined ? "" : format)
+        .toLowerCase();
+
+    if (name === "temperature") {
+        return formatTemperature(value);
+    }
+
+    if (name === "humidity") {
+        return formatHumidity(value);
+    }
+
+    if (name === "battery") {
+        return formatBattery(value);
+    }
+
+    if (name === "kbtu") {
+        return formatKbtu(value);
+    }
+
+    if (name === "count") {
+        return formatCount(value);
+    }
+
+    return formatRaw(value);
 }
 
 function formatTemperature(value) {
@@ -864,6 +1395,11 @@ function formatCount(value) {
     return value === null || value === undefined
         ? "–"
         : String(Math.round(Number(value)));
+}
+
+/** Unformatted value for fields without a known unit. */
+function formatRaw(value) {
+    return value === null || value === undefined ? "–" : String(value);
 }
 
 function formatAge(timestamp, nowMs) {

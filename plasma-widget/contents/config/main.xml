@@ -5,8 +5,16 @@
                           http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="General">
+    <!--
+      These are empty on purpose. The shared file (~/.config/sensorbridge)
+      holds the values, including labels and lists, so the widget does not
+      carry a particular installation's sensors or readings in its source.
+    -->
+    <entry name="title" type="String">
+      <default></default>
+    </entry>
     <entry name="grafanaUrl" type="String">
-      <default>http://grafana:3000</default>
+      <default></default>
     </entry>
     <entry name="dashboardUrl" type="String">
       <default></default>
@@ -15,28 +23,38 @@
       <default></default>
     </entry>
     <entry name="datasourceUid" type="String">
-      <default>influxdb</default>
+      <default></default>
     </entry>
     <entry name="bucket" type="String">
-      <default>sensors</default>
+      <default></default>
     </entry>
     <entry name="measurement" type="String">
-      <default>mqtt_consumer</default>
+      <default></default>
     </entry>
+    <!-- Empty means "discover and show every sensor". -->
     <entry name="sensors" type="String">
-      <default>GVH5075_B6D2,GVH5075_E22C</default>
+      <default></default>
     </entry>
+    <!-- JSON array of column definitions; empty discovers the columns. -->
+    <entry name="sensorFields" type="String">
+      <default></default>
+    </entry>
+    <!-- JSON array of single-value readings above the sensors. -->
+    <entry name="extraReadings" type="String">
+      <default></default>
+    </entry>
+    <!-- Legacy settings, read only so older configs can be migrated. -->
     <entry name="outside" type="String">
-      <default>ibc_boiler|boiler=SL10-85G3|outdoor_c</default>
+      <default></default>
     </entry>
     <entry name="boilerHeat" type="String">
-      <default>ibc_boiler|boiler=SL10-85G3|load2_btu</default>
+      <default></default>
     </entry>
     <entry name="jfConnections" type="String">
-      <default>jellyfin_connections|service=jellyfin|value</default>
+      <default></default>
     </entry>
     <entry name="boilerErrors" type="String">
-      <default>ibc_boiler|boiler=SL10-85G3|active_errors</default>
+      <default></default>
     </entry>
     <entry name="refreshSeconds" type="Int">
       <default>60</default>
