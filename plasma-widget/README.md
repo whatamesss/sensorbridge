@@ -93,7 +93,13 @@ purpose and the widget reads them from the file.
 
 Right-click the widget and choose **Configure** to change the settings. A
 change applies immediately and is saved back to `~/.config/sensorbridge`, so it
-survives a restart even if the applet is removed and re-added:
+survives a restart even if the applet is removed and re-added. The dialog
+scrolls; both parts are shown here:
+
+<p align="center">
+  <img src="../docs/screenshots/widget-configurator1.png" width="360" alt="Widget Configure dialog (1 of 2)">
+  <img src="../docs/screenshots/widget-configurator2.png" width="360" alt="Widget Configure dialog (2 of 2)">
+</p>
 
 | Setting | Default | Notes |
 | --- | --- | --- |

@@ -117,6 +117,13 @@ source directory. The reinstall removes the placed widget, so add
 **SensorBridge** again from the widget chooser and log out and back in to load
 the new files. Its settings stay in `~/.config/sensorbridge`.
 
+The Configure dialog scrolls; both parts are shown here:
+
+<p align="center">
+  <img src="docs/screenshots/widget-configurator1.png" width="260" alt="Widget Configure dialog (1 of 2)">
+  <img src="docs/screenshots/widget-configurator2.png" width="260" alt="Widget Configure dialog (2 of 2)">
+</p>
+
 ### How the widget gets its data
 
 The widget reads from **Grafana's `/api/ds/query` API**, not from the app, the
