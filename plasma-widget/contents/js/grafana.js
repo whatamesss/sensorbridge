@@ -16,6 +16,22 @@ var COLORS = ["none", "negative", "positive"];
 
 var ALIGNMENTS = ["left", "right"];
 
+// Frame columns that describe a point rather than measure it, including the
+// app's own payload metadata. They must never become sensor columns.
+var RESERVED_FIELDS = ["time", "timestamp", "name", "address", "rssi"];
+
+/** True for metadata columns: reserved names and InfluxDB's `_` columns. */
+function isReservedField(field) {
+    var key = String(field === null || field === undefined ? "" : field)
+        .trim().toLowerCase();
+
+    if (key.length === 0 || key.charAt(0) === "_") {
+        return true;
+    }
+
+    return RESERVED_FIELDS.indexOf(key) >= 0;
+}
+
 /** "outdoor_c" / "dewPoint" -> "Outdoor C" / "Dew Point". */
 function humanizeField(name) {
     var text = String(name === null || name === undefined ? "" : name)
@@ -306,7 +322,8 @@ function parseSensorFields(raw) {
             continue;
         }
 
-        if (field.length === 0 || seen[field.toLowerCase()]) {
+        if (field.length === 0 || isReservedField(field)
+                || seen[field.toLowerCase()]) {
             continue;
         }
 
@@ -324,34 +341,42 @@ function parseSensorFields(raw) {
 
 /**
  * Turns the fields found in the response into a sensorFields list, preserving
- * any columns the user already configured. Dew point is appended when both
- * temperature and humidity are present.
+ * any columns the user already configured. Metadata is ignored, only fields
+ * with a known display format are auto-added, and dew point is inserted
+ * directly after humidity when both temperature and humidity are present.
  */
 function deriveSensorFields(rows, existing) {
     var fields = [];
     var known = {};
     var seen = {};
-    var i;
-    var j;
+    var humidityIndex = -1;
 
-    for (i = 0; existing && i < existing.length; i++) {
+    for (var i = 0; existing && i < existing.length; i++) {
+        var configured = existing[i];
+
+        if (isReservedField(configured.field) || known[String(
+                configured.field).toLowerCase()]) {
+            continue;
+        }
+
+        known[String(configured.field).toLowerCase()] = true;
         fields.push({
-            "field": existing[i].field,
-            "label": existing[i].label,
-            "format": existing[i].format,
-            "align": existing[i].align
+            "field": configured.field,
+            "label": configured.label,
+            "format": configured.format,
+            "align": configured.align
         });
-        known[existing[i].field.toLowerCase()] = true;
     }
 
     for (i = 0; rows && i < rows.length; i++) {
         var rowFields = rows[i].fields || [];
 
-        for (j = 0; j < rowFields.length; j++) {
+        for (var j = 0; j < rowFields.length; j++) {
             var name = rowFields[j];
             var key = name.toLowerCase();
 
-            if (known[key] || seen[key]) {
+            if (isReservedField(name) || known[key] || seen[key]
+                    || inferFormat(name) === "raw") {
                 continue;
             }
 
@@ -368,7 +393,14 @@ function deriveSensorFields(rows, existing) {
     if ((known.temperature || seen.temperature)
             && (known.humidity || seen.humidity)
             && !known.dewpoint && !seen.dewpoint) {
-        fields.push({
+        for (var k = 0; k < fields.length; k++) {
+            if (String(fields[k].field).toLowerCase() === "humidity") {
+                humidityIndex = k;
+                break;
+            }
+        }
+
+        fields.splice(humidityIndex + 1, 0, {
             "field": "dewPoint",
             "label": humanizeField("dewPoint"),
             "format": "temperature",
@@ -404,7 +436,7 @@ function buildFlux(bucket, measurement, names, fields) {
         var field = String(fields[i].field === undefined
             ? fields[i] : fields[i].field);
 
-        if (field.toLowerCase() !== "dewpoint") {
+        if (field.toLowerCase() !== "dewpoint" && !isReservedField(field)) {
             queryFields.push(field);
         }
     }
@@ -904,11 +936,19 @@ function columnsFor(rows, configuredFields) {
 
     if (configuredFields && configuredFields.length > 0) {
         for (i = 0; i < configuredFields.length; i++) {
+            var configured = configuredFields[i];
+
+            if (isReservedField(configured.field)
+                    || seen[String(configured.field).toLowerCase()]) {
+                continue;
+            }
+
+            seen[String(configured.field).toLowerCase()] = true;
             defs.push({
-                "field": configuredFields[i].field,
-                "label": configuredFields[i].label,
-                "format": configuredFields[i].format,
-                "align": configuredFields[i].align || "left"
+                "field": configured.field,
+                "label": configured.label,
+                "format": configured.format,
+                "align": configured.align || "left"
             });
         }
     } else {
@@ -919,7 +959,8 @@ function columnsFor(rows, configuredFields) {
                 var name = rowFields[j];
                 var key = name.toLowerCase();
 
-                if (seen[key]) {
+                if (isReservedField(name) || seen[key]
+                        || inferFormat(name) === "raw") {
                     continue;
                 }
 
@@ -934,7 +975,16 @@ function columnsFor(rows, configuredFields) {
         }
 
         if (seen.temperature && seen.humidity && !seen.dewpoint) {
-            defs.push({
+            var humidityIndex = -1;
+
+            for (i = 0; i < defs.length; i++) {
+                if (defs[i].field.toLowerCase() === "humidity") {
+                    humidityIndex = i;
+                    break;
+                }
+            }
+
+            defs.splice(humidityIndex + 1, 0, {
                 "field": "dewPoint",
                 "label": humanizeField("dewPoint"),
                 "format": "temperature",
@@ -1112,8 +1162,10 @@ function rowFromFrame(frame, configuredFields) {
             name = String(field.labels.name);
         }
 
-        if (fieldName.length > 0 && key !== "time" && key !== "_time"
-                && key !== "name") {
+        if (!isReservedField(fieldName)
+                && (field.type === undefined || field.type === null
+                    || String(field.type).toLowerCase() === "number")
+                && inferFormat(fieldName) !== "raw") {
             order.push(fieldName);
         }
     }
@@ -1138,6 +1190,10 @@ function rowFromFrame(frame, configuredFields) {
         for (var j = 0; j < configuredFields.length; j++) {
             var configured = configuredFields[j];
             var configuredKey = String(configured.field).toLowerCase();
+
+            if (isReservedField(configured.field)) {
+                continue;
+            }
 
             if (configuredKey === "dewpoint") {
                 values[configured.field] = null;

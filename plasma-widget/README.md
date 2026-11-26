@@ -140,11 +140,16 @@ explicitly and save the result. Discovery:
 - keeps labels already present as `name=Label`,
 - keeps configured names that did not answer, so a sleeping sensor is not
   silently removed, and
-- fills **Sensor columns** with the numeric fields it found, preserving any
-  columns and labels already configured.
+- fills **Sensor columns** with the temperature, humidity, battery and other
+  fields that have a known display format, preserving any columns and labels
+  already configured, and
+- ignores metadata such as `time`, `timestamp`, `name`, `address`, `rssi` and
+  InfluxDB's `_`-prefixed columns.
 
-Discovery writes the updated sensor list and column list to
-`~/.config/sensorbridge` immediately, so it also survives removing the widget.
+Discovery inserts a derived dew-point column directly after humidity when both
+temperature and humidity are present. It writes the updated sensor list and
+column list to `~/.config/sensorbridge` immediately, so it also survives
+removing the widget.
 
 ### Shared settings file
 
@@ -194,10 +199,13 @@ from the effective settings.
 - `format` is `temperature`, `humidity`, `battery`, `kbtu`, `count` or `raw`.
 - `align` is `left` or `right`.
 
-An empty array means the widget uses every numeric field the datasource
-returns, labels them from the field names, and adds a dew-point column when
-both temperature and humidity are present. The Discover action saves the
-result, so the labels and order can then be edited in Configure.
+An empty array means the widget uses every numeric field with a known display
+format that the datasource returns, labels them from the field names, and adds
+a dew-point column directly after humidity when both temperature and humidity
+are present. Metadata fields (`time`, `timestamp`, `name`, `address`, `rssi`
+and anything starting with `_`) are never shown as a column. The Discover
+action saves the result, so the labels and order can then be edited in
+Configure.
 
 ### Extra readings
 

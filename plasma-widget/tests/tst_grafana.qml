@@ -315,7 +315,10 @@ Item {
             {"field": "temperature"},
             {"field": "temperature", "label": "Duplicate"},
             {"field": ""},
-            {"field": "outdoor_c"}
+            {"field": "outdoor_c"},
+            {"field": "rssi"},
+            {"field": "timestamp"},
+            {"field": "_start"}
         ]));
         check(sensorFieldList.length === 2, "invalid/duplicate fields dropped");
         check(sensorFieldList[0].label === "Temperature",
@@ -327,9 +330,50 @@ Item {
         check(Grafana.parseSensorFields("not json").length === 0,
             "invalid field JSON is ignored");
 
+        // The app sends rssi and timestamp, and InfluxDB adds `_start`/`_stop`.
+        // None of those may turn into a sensor column.
+        var noisy = Grafana.parseResponse(200, response([{
+            "schema": {
+                "fields": [
+                    {"name": "_time", "type": "time"},
+                    {"name": "_start", "type": "time"},
+                    {"name": "_stop", "type": "time"},
+                    {"name": "name", "type": "string",
+                        "labels": {"name": "SENSOR_A"}},
+                    {"name": "temperature", "type": "number"},
+                    {"name": "humidity", "type": "number"},
+                    {"name": "battery", "type": "number"},
+                    {"name": "rssi", "type": "number"},
+                    {"name": "timestamp", "type": "number"},
+                    {"name": "_field", "type": "string"}
+                ]
+            },
+            "data": {
+                "values": [[now], [now - 5000], [now], ["SENSOR_A"],
+                    [19.0], [45.7], [95], [-60], [now], ["temperature"]]
+            }
+        }]), []);
+        check(noisy.rows.length === 1, "noisy frame still yields a row");
+        check(noisy.rows[0].fields.length === 3,
+            "metadata fields are not sensor fields");
+        check(noisy.rows[0].fields.indexOf("rssi") < 0
+            && noisy.rows[0].fields.indexOf("timestamp") < 0,
+            "rssi and timestamp are excluded");
+        check(noisy.rows[0].columns.length === 4,
+            "noisy frame has three readings plus dew point");
+        check(noisy.rows[0].columns[2].field === "dewPoint",
+            "dew point follows humidity");
+
         var derived = Grafana.deriveSensorFields(discovered.rows, []);
         check(derived.length === 4, "discovery derives every column");
-        check(derived[3].field === "dewPoint", "discovery adds dew point");
+        check(derived[2].field === "dewPoint",
+            "discovery inserts dew point after humidity");
+        check(derived[3].field === "battery",
+            "discovery keeps battery after dew point");
+        var noisyDerived = Grafana.deriveSensorFields(noisy.rows, []);
+        check(noisyDerived.length === 4
+            && noisyDerived[2].field === "dewPoint",
+            "noisy discovery derives only real readings");
         var preserved = Grafana.deriveSensorFields(discovered.rows, [{
             "field": "temperature", "label": "Room",
             "format": "temperature", "align": "right"
